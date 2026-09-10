@@ -19,6 +19,7 @@ pi（[@earendil-works/pi-coding-agent](https://github.com/earendil-works/pi-mono
 |------|------|
 | `/zentao <module> [args]` | 直接执行 CLI，不经过 LLM（零 token），结果以表格卡片留在对话流（不进入 LLM 上下文） |
 | `/zentao-executions <产品ID>` | 产品下的所有执行（产品名 + ID/名称/状态/起止时间表） |
+| `/zentao-context` | 显示当前项目 `zentao.config.json` 解析出的上下文 |
 | `/zentao-login` | 检查/执行登录；未登录时本地 TUI 收集地址/账号/密码（不进入对话） |
 | `/zentao-overview [me\|project]` | 编辑器下方常驻概览面板；重复同视图关闭，不同视图切换 |
 
@@ -54,6 +55,22 @@ pi install npm:pi-zentao
   - 在终端执行 `zentao login`（插件与终端 CLI 共享凭证）
 
 登录凭证由 zentao CLI 管理于 `~/.config/zentao/zentao.json`，**插件不读取、不接触**该文件及 `ZENTAO_PASSWORD`/`ZENTAO_TOKEN` 环境变量。`/zentao-login` 通过环境变量把密码传给 CLI 子进程（不出现在进程参数中），密码也不进入对话或 LLM 上下文。
+
+## 项目级上下文（zentao.config.json）
+
+在项目根目录放置 `zentao.config.json`（字段全可选）：
+
+```json
+{ "product": 26, "project": 167, "execution": 168 }
+```
+
+效果（优先级：显式参数 > 配置文件 > 原有报错）：
+
+- `zentao` 工具 list 动作缺范围参数时自动补全——对话直接问"有哪些激活 Bug""我的任务有哪些"即可，LLM 无需知道 ID
+- `zentao_my_overview` 的 me 视图只查配置的 product（Bug）+ execution（任务），从全量扫描降为 2 次查询
+- 状态栏追加上下文：`禅道 account@host · 产品26/执行168`
+
+用 `/zentao-context` 查看当前解析结果；直接编辑文件即生效（每次调用实时读取，无需重载）。文件可提交到仓库与团队共享，也可加入 `.gitignore`。
 
 ## 使用示例
 

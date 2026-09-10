@@ -2,6 +2,7 @@
 
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { currentProfile, type RunFn } from "./lib/cli.ts";
+import { describeContext, loadContext } from "./lib/context.ts";
 import type { MyItem, ProjectStat } from "./lib/overview.ts";
 
 /** 显示宽度：码点 > 0xff 的字符（CJK 等）计 2 列。 */
@@ -117,5 +118,6 @@ export async function refreshZentaoStatus(ctx: ExtensionContext, run: RunFn): Pr
     return;
   }
   const host = cur.server.replace(/^https?:\/\//, "");
-  ctx.ui.setStatus("zentao", `禅道 ${cur.account}@${host}`);
+  const contextSuffix = describeContext(loadContext(ctx.cwd));
+  ctx.ui.setStatus("zentao", `禅道 ${cur.account}@${host}${contextSuffix === "" ? "" : ` · ${contextSuffix}`}`);
 }

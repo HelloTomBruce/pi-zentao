@@ -64,6 +64,48 @@ describe("projectOverview", () => {
   });
 });
 
+const SCOPED_RUN = fixtureRun({
+  "product 26": { id: "26", name: "平台" },
+  "bug --product=26": [
+    { id: "11", title: "我的Bug", status: "active", pri: 1, assignedTo: "zhangsan" },
+    { id: "12", title: "别人的Bug", status: "active", pri: 1, assignedTo: "lisi" },
+  ],
+  "execution 168": { id: "168", name: "迭代168" },
+  "task --executionID=168": [
+    { id: "21", name: "我的任务", status: "doing", pri: 2, assignedTo: "zhangsan" },
+  ],
+});
+
+describe("myOverview scoped（项目上下文）", () => {
+  it("只查配置的 product 与 execution，scope 用名称", async () => {
+    const items = await myOverview(SCOPED_RUN, "zhangsan", { product: 26, execution: 168 });
+    expect(items.map((i) => i.id)).toEqual(["11", "21"]);
+    expect(items[0]).toMatchObject({ kind: "bug", scope: "平台" });
+    expect(items[1]).toMatchObject({ kind: "task", scope: "迭代168" });
+  });
+
+  it("详情查询失败时 scope 回退为 #id", async () => {
+    const items = await myOverview(SCOPED_RUN, "zhangsan", { execution: 999 });
+    expect(items).toEqual([]);
+  });
+});
+
+describe("getOverview 缓存键随上下文区分", () => {
+  it("不同上下文不共享缓存", async () => {
+    let calls = 0;
+    const run: RunFn = async (args) => {
+      calls++;
+      if (args[0] === "profile") return { profiles: [{ account: "zhangsan", server: "http://s", current: true }] };
+      return SCOPED_RUN(args);
+    };
+    const cache = new OverviewCache(60_000);
+    await getOverview("me", run, cache, { product: 26, execution: 168 });
+    const afterFirst = calls;
+    await getOverview("me", run, cache, { product: 27, execution: 168 });
+    expect(calls).toBeGreaterThan(afterFirst);
+  });
+});
+
 describe("getOverview + OverviewCache", () => {
   it("TTL 内第二次调用命中缓存（不再调 CLI）", async () => {
     let calls = 0;

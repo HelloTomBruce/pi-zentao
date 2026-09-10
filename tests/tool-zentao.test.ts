@@ -27,4 +27,9 @@ describe("executeZentao", () => {
     };
     await expect(executeZentao({ module: "bug", action: "list", product: 1 }, run)).rejects.toThrow(/zentao-login/);
   });
+
+  it("list 缺范围参数时从项目上下文补全", async () => {
+    const res = await executeZentao({ module: "bug", action: "list" }, RUN, { product: 26 });
+    expect(res.details.count).toBe(1);
+  });
 });

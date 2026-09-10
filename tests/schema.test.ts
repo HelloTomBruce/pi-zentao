@@ -1,6 +1,6 @@
 // tests/schema.test.ts
 import { describe, expect, it } from "vitest";
-import { buildCliArgs, MODULES } from "../src/lib/schema.ts";
+import { buildCliArgs, applyContextDefaults, MODULES } from "../src/lib/schema.ts";
 
 describe("buildCliArgs list", () => {
   it("bug 列表用 --product", () => {
@@ -45,6 +45,29 @@ describe("buildCliArgs list", () => {
 
   it("缺 scope 抛错并提示参数名", () => {
     expect(() => buildCliArgs({ module: "bug", action: "list" })).toThrow(/product/);
+  });
+});
+
+describe("applyContextDefaults", () => {
+  const ctx = { product: 26, project: 167, execution: 168 };
+
+  it("list 动作从上下文补全三个范围键（buildCliArgs 按模块取用，未用字段无害）", () => {
+    expect(applyContextDefaults({ module: "task", action: "list" } as const, ctx))
+      .toEqual({ module: "task", action: "list", product: 26, project: 167, executionID: 168 });
+    expect(applyContextDefaults({ module: "execution", action: "list" } as const, ctx))
+      .toEqual({ module: "execution", action: "list", product: 26, project: 167, executionID: 168 });
+  });
+
+  it("显式参数优先，非 list 动作不补", () => {
+    expect(applyContextDefaults({ module: "bug", action: "list", product: 99 } as const, ctx))
+      .toEqual({ module: "bug", action: "list", product: 99, project: 167, executionID: 168 });
+    expect(applyContextDefaults({ module: "bug", action: "get", id: 1 } as const, ctx))
+      .toEqual({ module: "bug", action: "get", id: 1 });
+  });
+
+  it("空上下文原样返回", () => {
+    const args = { module: "bug" as const, action: "list" as const };
+    expect(applyContextDefaults(args, {})).toEqual(args);
   });
 });
 

@@ -10,7 +10,8 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { hintOf, runZentao, type RunFn } from "../lib/cli.ts";
-import { buildCliArgs, MODULES, type ZentaoArgs } from "../lib/schema.ts";
+import { loadContext, type ZentaoContext } from "../lib/context.ts";
+import { applyContextDefaults, buildCliArgs, MODULES, type ZentaoArgs } from "../lib/schema.ts";
 import { columnsFor, kvText, tableText } from "../ui.ts";
 
 const DESCRIPTION = `Query or operate ZenTao (禅道) project data through the installed zentao CLI.
@@ -29,7 +30,8 @@ Notes:
 - bug resolve requires fields: resolution + assignedTo + resolvedBuild + comment (server-enforced).
 - task start requires fields.realStarted; task finish requires currentConsumed + realStarted + finishedDate.
 - Lists return up to 200 rows — filter client-side via the status / assignedTo fields in the JSON.
-- Requires zentao CLI login done beforehand (user runs /zentao-login or zentao login; credentials are managed by the CLI).`;
+- Requires zentao CLI login done beforehand (user runs /zentao-login or zentao login; credentials are managed by the CLI).
+- If the project root has zentao.config.json ({"product":N,"project":N,"execution":N}), list scope params fall back to it — you may omit product/project/executionID when the context makes them unambiguous.`;
 
 export interface ZentaoDetails { module: string; action: string; data: unknown; count: number; }
 
@@ -38,11 +40,12 @@ export interface ZentaoToolResult {
   details: ZentaoDetails;
 }
 
-/** 工具执行体（与 pi 注册解耦，便于单测）。 */
-export async function executeZentao(args: ZentaoArgs, run: RunFn): Promise<ZentaoToolResult> {
+/** 工具执行体（与 pi 注册解耦，便于单测）。
+ *  context 为项目级上下文（zentao.config.json），作为 list 范围参数默认值。 */
+export async function executeZentao(args: ZentaoArgs, run: RunFn, context: ZentaoContext = {}): Promise<ZentaoToolResult> {
   let data: unknown;
   try {
-    data = await run(buildCliArgs(args));
+    data = await run(buildCliArgs(applyContextDefaults(args, context)));
   } catch (err) {
     throw new Error(hintOf(err));
   }
@@ -77,8 +80,8 @@ export function registerZentaoTool(pi: ExtensionAPI, run: RunFn = (a) => runZent
       executionID: Type.Optional(Type.Number({ description: "执行 ID（task 列表的范围参数）" })),
       fields: Type.Optional(Type.Record(Type.String(), Type.Any(), { description: "create/update/状态动作的字段键值对" })),
     }),
-    async execute(_toolCallId, params) {
-      return executeZentao(params as ZentaoArgs, run);
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      return executeZentao(params as ZentaoArgs, run, loadContext(ctx.cwd));
     },
     renderCall(args, theme) {
       const a = args as { module?: string; action?: string; id?: number };

@@ -4,6 +4,8 @@
  * 程序侧再按需过滤。
  */
 
+import type { ZentaoContext } from "./context.ts";
+
 export type ZentaoModule =
   | "program" | "product" | "project" | "execution"
   | "story" | "epic" | "requirement"
@@ -147,6 +149,16 @@ export function buildCliArgs(args: ZentaoArgs): string[] {
   }
   if (id === undefined) throw new Error(`${info.label}(${module}) ${action} 需要 id`);
   return [module, action, String(id), ...flagArgs(fields)];
+}
+
+/** 把项目上下文补为 list 动作的范围参数默认值（显式参数优先；非 list 不补）。 */
+export function applyContextDefaults(args: ZentaoArgs, context: ZentaoContext): ZentaoArgs {
+  if (args.action !== "list") return args;
+  const filled: ZentaoArgs = { ...args };
+  if (filled.product === undefined && context.product !== undefined) filled.product = context.product;
+  if (filled.project === undefined && context.project !== undefined) filled.project = context.project;
+  if (filled.executionID === undefined && context.execution !== undefined) filled.executionID = context.execution;
+  return filled;
 }
 
 function flagArgs(fields: Record<string, string | number | boolean> | undefined): string[] {

@@ -9,6 +9,8 @@ const RUN: RunFn = async (args) => {
   if (key.startsWith("profile")) return { profiles: [{ account: "zhangsan", server: "http://s", current: true }] };
   if (key.startsWith("product")) return [{ id: "1", name: "平台", status: "normal" }];
   if (key.startsWith("bug --product=1")) return [{ id: "11", title: "我的Bug", status: "active", pri: 1, assignedTo: "zhangsan" }];
+  if (key.startsWith("execution 9")) return { id: "9", name: "迭代9" };
+  if (key.startsWith("task --executionID=9")) return [{ id: "21", name: "我的任务", status: "doing", pri: 2, assignedTo: "zhangsan" }];
   if (key.startsWith("project")) return [];
   return [];
 };
@@ -41,6 +43,11 @@ describe("executeMyOverview", () => {
   it("project 视图返回统计", async () => {
     const res = await executeMyOverview("project", RUN, new OverviewCache(60_000));
     expect(res.details).toMatchObject({ view: "project", count: 0 });
+  });
+
+  it("me 视图带项目上下文时只查配置的 product/execution", async () => {
+    const res = await executeMyOverview("me", RUN, new OverviewCache(60_000), { product: 1, execution: 9 });
+    expect(res.details.count).toBe(2); // bug 11 + task 21
   });
 
   it("大数据触发截断", async () => {

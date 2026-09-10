@@ -1,9 +1,11 @@
 /**
  * 跨模块聚合：我的待办（me）与项目健康度（project）。
  * 所有数据经 RunFn（即 runZentao）获取，串行调用、结果带 TTL 缓存。
+ * 传入项目上下文时，me 视图只查配置的 product/execution。
  */
 
 import { currentProfile, type RunFn } from "./cli.ts";
+import type { ZentaoContext } from "./context.ts";
 
 export interface MyItem { kind: "bug" | "task"; id: string; title: string; pri: string; status: string; scope: string; }
 export interface ProjectStat { id: string; name: string; bugActive: number; bugResolved: number; bugClosed: number; }
@@ -27,8 +29,52 @@ const str = (v: unknown): string => (v === undefined || v === null ? "" : String
 /** 未完成任务状态。 */
 const TASK_OPEN = new Set(["wait", "doing", "pause"]);
 
-/** 我的待办：激活 Bug + 未完成任务，按 pri 数值升序（1 最高，空排最后）。 */
-export async function myOverview(run: RunFn, account: string): Promise<MyItem[]> {
+function sortByPri(items: MyItem[]): MyItem[] {
+  const priKey = (i: MyItem): number => (i.pri === "" ? 99 : Number(i.pri) || 99);
+  return items.sort((a, b) => priKey(a) - priKey(b));
+}
+
+/** 对象名称查询（product/execution 详情），失败或无名称回退 #id。 */
+async function scopeName(run: RunFn, args: string[], fallback: string): Promise<string> {
+  try {
+    const res = (await run(args)) as Row | undefined;
+    const name = res?.name;
+    return typeof name === "string" && name !== "" ? name : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** 配置了产品/执行时：只查这两处（各一次列表调用），不扫描全部产品/项目。 */
+async function myOverviewScoped(run: RunFn, account: string, context: ZentaoContext): Promise<MyItem[]> {
+  const items: MyItem[] = [];
+  if (context.product !== undefined) {
+    const scope = await scopeName(run, ["product", String(context.product)], `#${context.product}`);
+    const bugs = rows(await run(["bug", `--product=${context.product}`, "--recPerPage=200"]));
+    for (const b of bugs) {
+      if (b.status === "active" && accountOf(b.assignedTo) === account) {
+        items.push({ kind: "bug", id: str(b.id), title: str(b.title), pri: str(b.pri), status: str(b.status), scope });
+      }
+    }
+  }
+  if (context.execution !== undefined) {
+    const scope = await scopeName(run, ["execution", String(context.execution)], `#${context.execution}`);
+    const tasks = rows(await run(["task", `--executionID=${context.execution}`, "--recPerPage=200"]));
+    for (const t of tasks) {
+      if (TASK_OPEN.has(str(t.status)) && accountOf(t.assignedTo) === account) {
+        items.push({ kind: "task", id: str(t.id), title: str(t.name), pri: str(t.pri), status: str(t.status), scope });
+      }
+    }
+  }
+  return sortByPri(items);
+}
+
+/** 我的待办：激活 Bug + 未完成任务，按 pri 数值升序（1 最高，空排最后）。
+ *  传入项目上下文时只查配置的 product/execution。 */
+export async function myOverview(run: RunFn, account: string, context?: ZentaoContext): Promise<MyItem[]> {
+  if (context !== undefined && (context.product !== undefined || context.execution !== undefined)) {
+    return myOverviewScoped(run, account, context);
+  }
   const items: MyItem[] = [];
 
   const products = rows(await run(["product", "--recPerPage=200"])).filter((p) => p.status === "normal");
@@ -54,8 +100,7 @@ export async function myOverview(run: RunFn, account: string): Promise<MyItem[]>
     }
   }
 
-  const priKey = (i: MyItem): number => (i.pri === "" ? 99 : Number(i.pri) || 99);
-  return items.sort((a, b) => priKey(a) - priKey(b));
+  return sortByPri(items);
 }
 
 /** 项目健康度：进行中项目的 Bug 状态统计。 */
@@ -92,21 +137,26 @@ export class OverviewCache {
   }
 }
 
-/** 聚合入口：me 视图内部取当前账号（未登录抛引导错误）。 */
+/** 聚合入口：me 视图内部取当前账号（未登录抛引导错误）。
+ *  me 视图按项目上下文收窄（有配置时只查配置的 product/execution）。 */
 export async function getOverview(
   view: "me" | "project",
   run: RunFn,
   cache: OverviewCache,
+  context?: ZentaoContext,
 ): Promise<MyItem[] | ProjectStat[]> {
-  const cached = cache.get(view);
+  const cacheKey = view === "me"
+    ? `me:${context?.product ?? ""}:${context?.project ?? ""}:${context?.execution ?? ""}`
+    : view;
+  const cached = cache.get(cacheKey);
   if (cached !== undefined) return cached;
   const data = view === "me"
     ? await (async () => {
         const profile = await currentProfile(run);
         if (profile === null) throw new Error("未登录禅道，请执行 /zentao-login");
-        return myOverview(run, profile.account);
+        return myOverview(run, profile.account, context);
       })()
     : await projectOverview(run);
-  cache.set(view, data);
+  cache.set(cacheKey, data);
   return data;
 }

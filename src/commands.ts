@@ -3,6 +3,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { currentProfile, hintOf, login, type RunFn } from "./lib/cli.ts";
+import { contextPath, describeContext, loadContext } from "./lib/context.ts";
 import { getOverview, OverviewCache } from "./lib/overview.ts";
 import { cellText, columnsFor, kvText, overviewLines, refreshZentaoStatus, tableText } from "./ui.ts";
 
@@ -95,6 +96,19 @@ export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
       } catch (err) {
         ctx.ui.notify(hintOf(err), "error");
       }
+    },
+  });
+
+  pi.registerCommand("zentao-context", {
+    description: "显示当前项目的禅道上下文（zentao.config.json 的解析结果）",
+    handler: async (_args, ctx) => {
+      const path = contextPath(ctx.cwd);
+      const cfg = loadContext(ctx.cwd);
+      const desc = describeContext(cfg);
+      ctx.ui.notify(
+        `配置文件：${path}\n上下文：${desc === "" ? "（未配置，list 操作需显式传范围参数）" : desc}`,
+        "info",
+      );
     },
   });
 

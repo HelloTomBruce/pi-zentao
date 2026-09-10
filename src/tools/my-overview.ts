@@ -10,6 +10,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { hintOf, runZentao, type RunFn } from "../lib/cli.ts";
+import { loadContext, type ZentaoContext } from "../lib/context.ts";
 import { getOverview, OverviewCache, type MyItem, type ProjectStat } from "../lib/overview.ts";
 import { overviewLines } from "../ui.ts";
 
@@ -25,10 +26,11 @@ export async function executeMyOverview(
   view: "me" | "project",
   run: RunFn,
   cache: OverviewCache,
+  context: ZentaoContext = {},
 ): Promise<OverviewToolResult> {
   let data: MyItem[] | ProjectStat[];
   try {
-    data = await getOverview(view, run, cache);
+    data = await getOverview(view, run, cache, context);
   } catch (err) {
     throw new Error(hintOf(err));
   }
@@ -48,7 +50,7 @@ export function registerMyOverviewTool(pi: ExtensionAPI, run: RunFn = (a) => run
     name: "zentao_my_overview",
     label: "ZenTao 我的概览",
     description:
-      "Get the current ZenTao user's overview in one call: view=me returns my active bugs and unfinished tasks sorted by priority; view=project returns per-project bug statistics (active/resolved/closed) for ongoing projects. Results are cached for 5 minutes.",
+      "Get the current ZenTao user's overview in one call: view=me returns my active bugs and unfinished tasks sorted by priority; view=project returns per-project bug statistics (active/resolved/closed) for ongoing projects. Results are cached for 5 minutes. If the project root has zentao.config.json, view=me only queries the configured product (bugs) and execution (tasks) instead of scanning everything.",
     promptSnippet: "Show the current user's ZenTao todos (my bugs/tasks) or project bug statistics",
     promptGuidelines: [
       "Use zentao_my_overview when the user asks what they should work on today, their open bugs/tasks, or overall project health in 禅道.",
@@ -56,9 +58,9 @@ export function registerMyOverviewTool(pi: ExtensionAPI, run: RunFn = (a) => run
     parameters: Type.Object({
       view: Type.Optional(StringEnum(["me", "project"] as unknown as string[])),
     }),
-    async execute(_toolCallId, params) {
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const p = params as { view?: "me" | "project" };
-      return executeMyOverview(p.view ?? "me", run, cache);
+      return executeMyOverview(p.view ?? "me", run, cache, loadContext(ctx.cwd));
     },
     renderCall(_args, theme) {
       return new Text(theme.fg("toolTitle", theme.bold("zentao_my_overview")), 0, 0);
