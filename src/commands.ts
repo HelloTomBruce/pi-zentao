@@ -2,7 +2,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { currentProfile, hintOf, login, runZentao, type RunFn } from "./lib/cli.ts";
+import { currentProfile, hintOf, login, type RunFn } from "./lib/cli.ts";
 import { getOverview, OverviewCache } from "./lib/overview.ts";
 import { columnsFor, kvText, overviewLines, refreshZentaoStatus, tableText } from "./ui.ts";
 
@@ -97,7 +97,7 @@ export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
         ctx.ui.notify("用法：/zentao-overview [me|project]", "warning");
         return;
       }
-      const requested = (arg === "" ? "me" : arg) as "me" | "project";
+      const requested = (arg === "" ? (overviewView ?? "me") : arg) as "me" | "project";
       if (overviewView === requested) {
         overviewView = null;
         ctx.ui.setWidget("zentao-overview", undefined);
