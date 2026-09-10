@@ -18,6 +18,8 @@ interface ModuleInfo {
   readonly label: string;
   /** 列表时必须提供的范围参数名（无则 null）。 */
   readonly scopeFlag: string | null;
+  /** 备选范围参数名（如 execution 的 --product；提供时优先于 scopeFlag）。 */
+  readonly altScopeFlag?: string;
   /** scope 可选：提供则过滤，缺省则列表全部（真实 CLI：execution 无 scope 可列表）。 */
   readonly scopeOptional?: boolean;
   /** 允许的动作集合。 */
@@ -30,7 +32,7 @@ export const MODULE_INFO: Record<ZentaoModule, ModuleInfo> = {
   program:     { label: "项目集", scopeFlag: null, actions: set("list", "get", "create", "update", "delete") },
   product:     { label: "产品",   scopeFlag: null, actions: set("list", "get", "create", "update", "delete") },
   project:     { label: "项目",   scopeFlag: null, actions: set("list", "get", "create", "update", "delete") },
-  execution:   { label: "执行",   scopeFlag: "--project", scopeOptional: true, actions: set("list", "get", "create", "update", "delete") },
+  execution:   { label: "执行",   scopeFlag: "--project", altScopeFlag: "--product", scopeOptional: true, actions: set("list", "get", "create", "update", "delete") },
   story:       { label: "需求",   scopeFlag: "--product", actions: set("list", "get", "create", "update", "delete", "activate", "close", "change") },
   epic:        { label: "业务需求", scopeFlag: "--productID", actions: set("list", "get", "create", "update", "delete", "activate", "close", "change") },
   requirement: { label: "用户需求", scopeFlag: "--productID", actions: set("list", "get", "create", "update", "delete", "activate", "close", "change") },
@@ -79,6 +81,10 @@ export function buildCliArgs(args: ZentaoArgs): string[] {
   }
 
   if (action === "list") {
+    // 备选范围参数优先（execution: --product 优先于 --project）。
+    if (info.altScopeFlag !== undefined && args.product !== undefined) {
+      return [module, `${info.altScopeFlag}=${args.product}`, "--recPerPage=200"];
+    }
     const scope = info.scopeFlag;
     if (scope !== null) {
       let value: number | undefined;

@@ -1,10 +1,10 @@
-/** 斜杠命令：/zentao（CLI 透传卡片）、/zentao-login、/zentao-overview（widget 面板）。 */
+/** 斜杠命令：/zentao（CLI 透传卡片）、/zentao-executions、/zentao-login、/zentao-overview（widget 面板）。 */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { currentProfile, hintOf, login, type RunFn } from "./lib/cli.ts";
 import { getOverview, OverviewCache } from "./lib/overview.ts";
-import { columnsFor, kvText, overviewLines, refreshZentaoStatus, tableText } from "./ui.ts";
+import { cellText, columnsFor, kvText, overviewLines, refreshZentaoStatus, tableText } from "./ui.ts";
 
 /**  shell 风格参数切分（支持单双引号）。 */
 export function splitArgs(s: string): string[] {
@@ -49,6 +49,49 @@ export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
       try {
         const data = await run(argv);
         pi.appendEntry("zentao-card", { argv, data });
+      } catch (err) {
+        ctx.ui.notify(hintOf(err), "error");
+      }
+    },
+  });
+
+  // /zentao-executions 卡片：产品详情 + 执行表格。
+  pi.registerEntryRenderer("zentao-executions", (entry, { expanded }, theme) => {
+    const { product, executions } = entry.data as {
+      product: Record<string, unknown>;
+      executions: Record<string, unknown>[];
+    };
+    const header = theme.fg("accent", `zentao executions --product=${cellText(product.id)}  ${cellText(product.name)}`);
+    const cols = [
+      { key: "id", label: "ID" },
+      { key: "name", label: "名称" },
+      { key: "status", label: "状态" },
+      { key: "begin", label: "开始" },
+      { key: "end", label: "结束" },
+    ];
+    const body = executions.length === 0
+      ? "（该产品下没有执行）"
+      : tableText(executions, cols, expanded ? 200 : 10);
+    return new Text(`${header}\n${body}`, 0, 0);
+  });
+
+  pi.registerCommand("zentao-executions", {
+    description: "查看产品下的所有执行：/zentao-executions <产品ID>",
+    handler: async (args, ctx) => {
+      const id = args.trim();
+      if (!/^\d+$/.test(id)) {
+        ctx.ui.notify("用法：/zentao-executions <产品ID>，如 /zentao-executions 26", "warning");
+        return;
+      }
+      try {
+        const [product, executions] = await Promise.all([
+          run(["product", id]),
+          run(["execution", `--product=${id}`, "--recPerPage=200"]),
+        ]);
+        pi.appendEntry("zentao-executions", {
+          product: product as Record<string, unknown>,
+          executions: Array.isArray(executions) ? (executions as Record<string, unknown>[]) : [],
+        });
       } catch (err) {
         ctx.ui.notify(hintOf(err), "error");
       }

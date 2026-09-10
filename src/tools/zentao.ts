@@ -23,7 +23,7 @@ Usage: pick a module and an action:
 - delete <id>
 - status actions per module: bug -> activate/close/resolve; task -> activate/close/start/finish; story/epic/requirement -> activate/close/change
 
-Scope params: story/bug/testcase -> product; epic/requirement/testtask/productplan/release/feedback/ticket/system -> product; execution/build -> project; task -> executionID.
+Scope params: story/bug/testcase -> product; epic/requirement/testtask/productplan/release/feedback/ticket/system -> product; execution -> product (preferred) or project; build -> project; task -> executionID.
 
 Notes:
 - bug resolve requires fields: resolution + assignedTo + resolvedBuild + comment (server-enforced).
@@ -65,15 +65,15 @@ export function registerZentaoTool(pi: ExtensionAPI, run: RunFn = (a) => runZent
     promptSnippet: "Query or operate ZenTao (禅道) data: bug/story/task/project lists, details, creates, updates, status transitions",
     promptGuidelines: [
       "Use the zentao tool when the user asks about 禅道 data (bugs, stories, tasks, projects, executions, testcases) instead of asking them to paste lists.",
-      "Use the zentao tool with action=list and the module's scope param (bug/story/testcase -> product; task -> executionID; execution/build -> project).",
+      "Use the zentao tool with action=list and the module's scope param (bug/story/testcase -> product; task -> executionID; execution -> product or project, product preferred; build -> project).",
       "Use the zentao tool bug resolve with fields containing resolution + assignedTo + resolvedBuild + comment (all four required).",
     ],
     parameters: Type.Object({
       module: StringEnum(MODULES as unknown as string[]),
       action: StringEnum(ACTIONS as unknown as string[]),
       id: Type.Optional(Type.Number({ description: "对象 ID（get/update/delete/状态动作需要）" })),
-      product: Type.Optional(Type.Number({ description: "产品 ID（story/bug/testcase 及 productID 系模块的列表范围参数，插件自动映射）" })),
-      project: Type.Optional(Type.Number({ description: "项目 ID（execution/build 的列表范围参数）" })),
+      product: Type.Optional(Type.Number({ description: "产品 ID（story/bug/testcase、productID 系模块的列表范围参数；execution 列表亦可用，优先于 project）" })),
+      project: Type.Optional(Type.Number({ description: "项目 ID（execution/build 的列表范围参数；execution 列表中 product 优先）" })),
       executionID: Type.Optional(Type.Number({ description: "执行 ID（task 列表的范围参数）" })),
       fields: Type.Optional(Type.Record(Type.String(), Type.Any(), { description: "create/update/状态动作的字段键值对" })),
     }),

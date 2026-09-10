@@ -18,6 +18,7 @@ pi（[@earendil-works/pi-coding-agent](https://github.com/earendil-works/pi-mono
 | 命令 | 说明 |
 |------|------|
 | `/zentao <module> [args]` | 直接执行 CLI，不经过 LLM（零 token），结果以表格卡片留在对话流（不进入 LLM 上下文） |
+| `/zentao-executions <产品ID>` | 产品下的所有执行（产品名 + ID/名称/状态/起止时间表） |
 | `/zentao-login` | 检查/执行登录；未登录时本地 TUI 收集地址/账号/密码（不进入对话） |
 | `/zentao-overview [me\|project]` | 编辑器下方常驻概览面板；重复同视图关闭，不同视图切换 |
 
@@ -71,6 +72,8 @@ pi install npm:pi-zentao
 ```
 /zentao product                              # 产品列表表格卡片
 /zentao bug --product=26                     # 产品 26 的 Bug
+/zentao execution --product=26               # 产品 26 下的执行（LLM 工具同样支持 product 范围）
+/zentao-executions 26                        # 同上，一键直达（产品名 + 执行表格）
 /zentao-overview project                     # 切换到项目健康度
 /zentao-overview project                     # 同视图 → 关闭面板
 /zentao-login                                # 检查/执行登录

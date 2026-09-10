@@ -23,6 +23,21 @@ describe("buildCliArgs list", () => {
       .toEqual(["execution", "--recPerPage=200"]);
   });
 
+  it("execution 列表可用 product 范围参数", () => {
+    expect(buildCliArgs({ module: "execution", action: "list", product: 3 }))
+      .toEqual(["execution", "--product=3", "--recPerPage=200"]);
+  });
+
+  it("execution 列表 product 与 project 同时给出时 product 优先", () => {
+    expect(buildCliArgs({ module: "execution", action: "list", product: 3, project: 5 }))
+      .toEqual(["execution", "--product=3", "--recPerPage=200"]);
+  });
+
+  it("execution 列表仍可用 project 范围参数", () => {
+    expect(buildCliArgs({ module: "execution", action: "list", project: 5 }))
+      .toEqual(["execution", "--project=5", "--recPerPage=200"]);
+  });
+
   it("无 scopeFlag 的模块直接列表", () => {
     expect(buildCliArgs({ module: "product", action: "list" }))
       .toEqual(["product", "--recPerPage=200"]);
