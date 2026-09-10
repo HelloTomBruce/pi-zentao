@@ -1,0 +1,39 @@
+{
+  "name": "pi-zentao",
+  "version": "0.1.0",
+  "description": "pi 插件：禅道（ZenTao）查询/操作工具 + 斜杠命令 + TUI 概览面板。凭证由 zentao CLI 管理，插件不接触凭证。",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit --pretty false",
+    "test": "vitest run",
+    "verify": "npm run typecheck && npm run test"
+  },
+  "keywords": [
+    "pi",
+    "pi-extension",
+    "zentao",
+    "禅道",
+    "project-management"
+  ],
+  "dependencies": {
+    "typebox": "^1.0.0",
+    "zentao-cli": "^0.2.0"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.85.1",
+    "@earendil-works/pi-coding-agent": "^0.85.1",
+    "@earendil-works/pi-tui": "^0.85.1",
+    "@types/node": "^22.20.2",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
