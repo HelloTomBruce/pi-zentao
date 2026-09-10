@@ -1,6 +1,11 @@
 /** LLM 工具：zentao_my_overview —— 我的待办 / 项目健康度一键聚合。 */
 
-import { type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import {
+  DEFAULT_MAX_BYTES,
+  DEFAULT_MAX_LINES,
+  truncateHead,
+  type ExtensionAPI,
+} from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
@@ -27,8 +32,13 @@ export async function executeMyOverview(
   } catch (err) {
     throw new Error(hintOf(err));
   }
+  const json = JSON.stringify({ view, data }, null, 2) ?? "null";
+  const t = truncateHead(json, { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES });
+  const text = t.truncated
+    ? `${t.content}\n\n[输出已截断：仅显示前 ${t.outputLines}/${t.totalLines} 行，请用更精确的范围参数缩小结果]`
+    : t.content;
   return {
-    content: [{ type: "text", text: JSON.stringify({ view, data }, null, 2) }],
+    content: [{ type: "text", text }],
     details: { view, data, count: data.length },
   };
 }
