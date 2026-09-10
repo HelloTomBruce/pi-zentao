@@ -5,42 +5,42 @@ import { buildCliArgs, applyContextDefaults, MODULES } from "../src/lib/schema.t
 describe("buildCliArgs list", () => {
   it("bug 列表用 --product", () => {
     expect(buildCliArgs({ module: "bug", action: "list", product: 26 }))
-      .toEqual(["bug", "--product=26", "--recPerPage=200"]);
+      .toEqual(["bug", "--product=26", "--recPerPage=1000"]);
   });
 
   it("epic 列表用 --productID", () => {
     expect(buildCliArgs({ module: "epic", action: "list", product: 3 }))
-      .toEqual(["epic", "--productID=3", "--recPerPage=200"]);
+      .toEqual(["epic", "--productID=3", "--recPerPage=1000"]);
   });
 
   it("task 列表用 --executionID", () => {
     expect(buildCliArgs({ module: "task", action: "list", executionID: 9 }))
-      .toEqual(["task", "--executionID=9", "--recPerPage=200"]);
+      .toEqual(["task", "--executionID=9", "--recPerPage=1000"]);
   });
 
   it("execution 的 scope 可选，缺省列表全部", () => {
     expect(buildCliArgs({ module: "execution", action: "list" }))
-      .toEqual(["execution", "--recPerPage=200"]);
+      .toEqual(["execution", "--recPerPage=1000"]);
   });
 
   it("execution 列表可用 product 范围参数", () => {
     expect(buildCliArgs({ module: "execution", action: "list", product: 3 }))
-      .toEqual(["execution", "--product=3", "--recPerPage=200"]);
+      .toEqual(["execution", "--product=3", "--recPerPage=1000"]);
   });
 
   it("execution 列表 product 与 project 同时给出时 product 优先", () => {
     expect(buildCliArgs({ module: "execution", action: "list", product: 3, project: 5 }))
-      .toEqual(["execution", "--product=3", "--recPerPage=200"]);
+      .toEqual(["execution", "--product=3", "--recPerPage=1000"]);
   });
 
   it("execution 列表仍可用 project 范围参数", () => {
     expect(buildCliArgs({ module: "execution", action: "list", project: 5 }))
-      .toEqual(["execution", "--project=5", "--recPerPage=200"]);
+      .toEqual(["execution", "--project=5", "--recPerPage=1000"]);
   });
 
   it("无 scopeFlag 的模块直接列表", () => {
     expect(buildCliArgs({ module: "product", action: "list" }))
-      .toEqual(["product", "--recPerPage=200"]);
+      .toEqual(["product", "--recPerPage=1000"]);
   });
 
   it("缺 scope 抛错并提示参数名", () => {

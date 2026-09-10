@@ -12,9 +12,10 @@ import { Type } from "typebox";
 import { hintOf, runZentao, type RunFn } from "../lib/cli.ts";
 import { loadContext, type ZentaoContext } from "../lib/context.ts";
 import { getOverview, OverviewCache, type MyItem, type ProjectStat } from "../lib/overview.ts";
+import { LIST_PAGE_SIZE } from "../lib/schema.ts";
 import { overviewLines } from "../ui.ts";
 
-export interface OverviewDetails { view: "me" | "project"; data: MyItem[] | ProjectStat[]; count: number; }
+export interface OverviewDetails { view: "me" | "project"; data: MyItem[] | ProjectStat[]; count: number; truncated?: boolean; }
 
 export interface OverviewToolResult {
   content: { type: "text"; text: string }[];
@@ -28,20 +29,25 @@ export async function executeMyOverview(
   cache: OverviewCache,
   context: ZentaoContext = {},
 ): Promise<OverviewToolResult> {
-  let data: MyItem[] | ProjectStat[];
-  try {
-    data = await getOverview(view, run, cache, context);
-  } catch (err) {
-    throw new Error(hintOf(err));
-  }
+  const overview = await (async () => {
+    try {
+      return await getOverview(view, run, cache, context);
+    } catch (err) {
+      throw new Error(hintOf(err));
+    }
+  })();
+  const data = overview.items;
+  const truncatedNote = overview.truncated
+    ? `\n\n[结果可能不完整：某个列表超过 ${LIST_PAGE_SIZE} 条被截断——建议用 zentao 工具缩小范围（按状态/关键词），或按 ID 直达查询]`
+    : "";
   const json = JSON.stringify({ view, data }, null, 2) ?? "null";
   const t = truncateHead(json, { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES });
-  const text = t.truncated
+  const text = (t.truncated
     ? `${t.content}\n\n[输出已截断：仅显示前 ${t.outputLines}/${t.totalLines} 行，请用更精确的范围参数缩小结果]`
-    : t.content;
+    : t.content) + truncatedNote;
   return {
     content: [{ type: "text", text }],
-    details: { view, data, count: data.length },
+    details: { view, data, count: data.length, truncated: overview.truncated || undefined },
   };
 }
 

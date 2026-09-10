@@ -43,7 +43,7 @@ const ME_RUN = fixtureRun({
 
 describe("myOverview", () => {
   it("过滤 assignedTo=me 且状态激活/未完成，按 pri 升序", async () => {
-    const items = await myOverview(ME_RUN, "zhangsan");
+    const { items } = await myOverview(ME_RUN, "zhangsan");
     expect(items.map((i) => i.id)).toEqual(["11", "21"]); // P1 Bug 在前，P2 任务在后
     expect(items[0]).toMatchObject({ kind: "bug", scope: "平台" });
     expect(items[1]).toMatchObject({ kind: "task", scope: "迭代9" });
@@ -59,7 +59,7 @@ describe("projectOverview", () => {
         { id: "3", status: "resolved" }, { id: "4", status: "closed" },
       ],
     });
-    const stats = await projectOverview(run);
+    const { items: stats } = await projectOverview(run);
     expect(stats).toEqual([{ id: "5", name: "P5", bugActive: 2, bugResolved: 1, bugClosed: 1 }]);
   });
 });
@@ -78,15 +78,29 @@ const SCOPED_RUN = fixtureRun({
 
 describe("myOverview scoped（项目上下文）", () => {
   it("只查配置的 product 与 execution，scope 用名称", async () => {
-    const items = await myOverview(SCOPED_RUN, "zhangsan", { product: 26, execution: 168 });
+    const { items } = await myOverview(SCOPED_RUN, "zhangsan", { product: 26, execution: 168 });
     expect(items.map((i) => i.id)).toEqual(["11", "21"]);
     expect(items[0]).toMatchObject({ kind: "bug", scope: "平台" });
     expect(items[1]).toMatchObject({ kind: "task", scope: "迭代168" });
   });
 
   it("详情查询失败时 scope 回退为 #id", async () => {
-    const items = await myOverview(SCOPED_RUN, "zhangsan", { execution: 999 });
+    const { items } = await myOverview(SCOPED_RUN, "zhangsan", { execution: 999 });
     expect(items).toEqual([]);
+  });
+
+  it("来源列表达到页大小上限时标记 truncated", async () => {
+    const manyTasks = Array.from({ length: 1000 }, (_, i) => ({
+      id: String(20000 + i), name: `t${i}`, status: "doing", pri: 3, assignedTo: "lisi",
+    }));
+    const run: RunFn = async (args) => {
+      if (args[0] === "execution") return { id: "65", name: "巨型执行" };
+      if (args[0] === "task") return manyTasks;
+      return [];
+    };
+    const res = await myOverview(run, "zhangsan", { execution: 65 });
+    expect(res.truncated).toBe(true);
+    expect(res.items).toEqual([]); // 列表里无 zhangsan 的任务，但不静默——靠 truncated 提示
   });
 });
 

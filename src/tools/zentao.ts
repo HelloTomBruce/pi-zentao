@@ -11,7 +11,7 @@ import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { hintOf, runZentao, type RunFn } from "../lib/cli.ts";
 import { loadContext, type ZentaoContext } from "../lib/context.ts";
-import { applyContextDefaults, buildCliArgs, MODULES, type ZentaoArgs } from "../lib/schema.ts";
+import { applyContextDefaults, buildCliArgs, LIST_PAGE_SIZE, MODULES, type ZentaoArgs } from "../lib/schema.ts";
 import { columnsFor, kvText, tableText } from "../ui.ts";
 
 const DESCRIPTION = `Query or operate ZenTao (禅道) project data through the installed zentao CLI.
@@ -33,7 +33,7 @@ Notes:
 - Requires zentao CLI login done beforehand (user runs /zentao-login or zentao login; credentials are managed by the CLI).
 - If the project root has zentao.config.json ({"product":N,"project":N,"execution":N}), list scope params fall back to it — you may omit product/project/executionID when the context makes them unambiguous.`;
 
-export interface ZentaoDetails { module: string; action: string; data: unknown; count: number; }
+export interface ZentaoDetails { module: string; action: string; data: unknown; count: number; truncated?: boolean; }
 
 export interface ZentaoToolResult {
   content: { type: "text"; text: string }[];
@@ -49,13 +49,18 @@ export async function executeZentao(args: ZentaoArgs, run: RunFn, context: Zenta
   } catch (err) {
     throw new Error(hintOf(err));
   }
+  // list 返回条数恰等于页大小上限 → 可能截断（服务器分页偶数页有 bug，不做自动翻页）
+  const truncated = args.action === "list" && Array.isArray(data) && data.length >= LIST_PAGE_SIZE;
   const count = Array.isArray(data) ? data.length : data === undefined || data === null ? 0 : 1;
   const json = JSON.stringify(data, null, 2) ?? "null";
   const t = truncateHead(json, { maxLines: DEFAULT_MAX_LINES, maxBytes: DEFAULT_MAX_BYTES });
-  const text = t.truncated
+  const note = truncated
+    ? `\n\n[结果可能不完整：列表超过 ${LIST_PAGE_SIZE} 条，仅返回前 ${LIST_PAGE_SIZE} 条——建议缩小范围（按状态/关键词），或按 ID 直达查询]`
+    : "";
+  const text = (t.truncated
     ? `${t.content}\n\n[输出已截断：仅显示前 ${t.outputLines}/${t.totalLines} 行，请用更精确的范围参数缩小结果]`
-    : t.content;
-  return { content: [{ type: "text", text }], details: { module: args.module, action: args.action, data, count } };
+    : t.content) + note;
+  return { content: [{ type: "text", text }], details: { module: args.module, action: args.action, data, count, truncated: truncated || undefined } };
 }
 
 const ACTIONS = ["list", "get", "create", "update", "delete", "activate", "close", "resolve", "start", "finish", "change"] as const;

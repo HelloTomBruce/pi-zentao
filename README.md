@@ -99,7 +99,7 @@ pi install npm:pi-zentao
 已知规则（LLM 工具 description 中同样有说明）：
 
 - `bug resolve` 必须同时提供 `resolution` + `assignedTo` + `resolvedBuild` + `comment` 四个字段
-- 列表统一拉取最多 200 行，请按 `status`/`assignedTo` 等字段自行过滤
+- 列表统一用最大页 `--recPerPage=1000` 拉取（实测 1000 是禅道支持的最大合法页大小；500/2000 会触发服务器异常响应）。返回条数恰等于 1000 时结果标记 `truncated: true` 并在文本中提示——**服务器分页偶数页会返回伪造数据（禅道侧 bug），不做自动翻页**；超大列表请缩小范围（按状态/关键词），或按 ID 直达查询
 
 ## 开发
 

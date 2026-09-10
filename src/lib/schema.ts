@@ -1,8 +1,11 @@
 /**
- * zentao 工具的模块/动作白名单与 CLI 参数构造。所有列表统一
- * --recPerPage=200 拉全量（--filter 与分页不兼容的 pitfall 规避），
- * 程序侧再按需过滤。
+ * zentao 工具的模块/动作白名单与 CLI 参数构造。列表用最大页
+ * --recPerPage=1000 拉取（实测 1000 为禅道支持的最大合法页大小，
+ * 500/2000 等值会触发服务器异常响应），程序侧再按需过滤。
+ * 服务器分页偶数页返回伪造数据（已知 bug），不做自动翻页。
  */
+
+export const LIST_PAGE_SIZE = 1000;
 
 import type { ZentaoContext } from "./context.ts";
 
@@ -85,7 +88,7 @@ export function buildCliArgs(args: ZentaoArgs): string[] {
   if (action === "list") {
     // 备选范围参数优先（execution: --product 优先于 --project）。
     if (info.altScopeFlag !== undefined && args.product !== undefined) {
-      return [module, `${info.altScopeFlag}=${args.product}`, "--recPerPage=200"];
+      return [module, `${info.altScopeFlag}=${args.product}`, `--recPerPage=${LIST_PAGE_SIZE}`];
     }
     const scope = info.scopeFlag;
     if (scope !== null) {
@@ -97,10 +100,10 @@ export function buildCliArgs(args: ZentaoArgs): string[] {
         throw new Error(`${info.label}(${module}) 列表需要 ${scope.replace(/^--/, "")} 参数`);
       }
       return value === undefined
-        ? [module, "--recPerPage=200"]
-        : [module, `${scope}=${value}`, "--recPerPage=200"];
+        ? [module, `--recPerPage=${LIST_PAGE_SIZE}`]
+        : [module, `${scope}=${value}`, `--recPerPage=${LIST_PAGE_SIZE}`];
     }
-    return [module, "--recPerPage=200"];
+    return [module, `--recPerPage=${LIST_PAGE_SIZE}`];
   }
 
   if (action === "get") {

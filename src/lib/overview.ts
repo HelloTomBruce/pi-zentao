@@ -6,9 +6,16 @@
 
 import { currentProfile, type RunFn } from "./cli.ts";
 import type { ZentaoContext } from "./context.ts";
+import { LIST_PAGE_SIZE } from "./schema.ts";
 
 export interface MyItem { kind: "bug" | "task"; id: string; title: string; pri: string; status: string; scope: string; }
 export interface ProjectStat { id: string; name: string; bugActive: number; bugResolved: number; bugClosed: number; }
+
+/** 聚合结果：items + truncated（任一来源列表达到页大小上限，结果可能不完整）。 */
+export interface OverviewData {
+  items: MyItem[] | ProjectStat[];
+  truncated: boolean;
+}
 
 type Row = Record<string, unknown>;
 
@@ -46,11 +53,13 @@ async function scopeName(run: RunFn, args: string[], fallback: string): Promise<
 }
 
 /** 配置了产品/执行时：只查这两处（各一次列表调用），不扫描全部产品/项目。 */
-async function myOverviewScoped(run: RunFn, account: string, context: ZentaoContext): Promise<MyItem[]> {
+async function myOverviewScoped(run: RunFn, account: string, context: ZentaoContext): Promise<OverviewData> {
   const items: MyItem[] = [];
+  let truncated = false;
   if (context.product !== undefined) {
     const scope = await scopeName(run, ["product", String(context.product)], `#${context.product}`);
-    const bugs = rows(await run(["bug", `--product=${context.product}`, "--recPerPage=200"]));
+    const bugs = rows(await run(["bug", `--product=${context.product}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    truncated ||= bugs.length >= LIST_PAGE_SIZE;
     for (const b of bugs) {
       if (b.status === "active" && accountOf(b.assignedTo) === account) {
         items.push({ kind: "bug", id: str(b.id), title: str(b.title), pri: str(b.pri), status: str(b.status), scope });
@@ -59,27 +68,31 @@ async function myOverviewScoped(run: RunFn, account: string, context: ZentaoCont
   }
   if (context.execution !== undefined) {
     const scope = await scopeName(run, ["execution", String(context.execution)], `#${context.execution}`);
-    const tasks = rows(await run(["task", `--executionID=${context.execution}`, "--recPerPage=200"]));
+    const tasks = rows(await run(["task", `--executionID=${context.execution}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    truncated ||= tasks.length >= LIST_PAGE_SIZE;
     for (const t of tasks) {
       if (TASK_OPEN.has(str(t.status)) && accountOf(t.assignedTo) === account) {
         items.push({ kind: "task", id: str(t.id), title: str(t.name), pri: str(t.pri), status: str(t.status), scope });
       }
     }
   }
-  return sortByPri(items);
+  return { items: sortByPri(items), truncated };
 }
 
 /** 我的待办：激活 Bug + 未完成任务，按 pri 数值升序（1 最高，空排最后）。
  *  传入项目上下文时只查配置的 product/execution。 */
-export async function myOverview(run: RunFn, account: string, context?: ZentaoContext): Promise<MyItem[]> {
+export async function myOverview(run: RunFn, account: string, context?: ZentaoContext): Promise<OverviewData> {
   if (context !== undefined && (context.product !== undefined || context.execution !== undefined)) {
     return myOverviewScoped(run, account, context);
   }
   const items: MyItem[] = [];
+  let truncated = false;
 
-  const products = rows(await run(["product", "--recPerPage=200"])).filter((p) => p.status === "normal");
+  const products = rows(await run(["product", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "normal");
+  truncated ||= products.length >= LIST_PAGE_SIZE;
   for (const p of products) {
-    const bugs = rows(await run(["bug", `--product=${str(p.id)}`, "--recPerPage=200"]));
+    const bugs = rows(await run(["bug", `--product=${str(p.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    truncated ||= bugs.length >= LIST_PAGE_SIZE;
     for (const b of bugs) {
       if (b.status === "active" && accountOf(b.assignedTo) === account) {
         items.push({ kind: "bug", id: str(b.id), title: str(b.title), pri: str(b.pri), status: str(b.status), scope: str(p.name) });
@@ -87,11 +100,14 @@ export async function myOverview(run: RunFn, account: string, context?: ZentaoCo
     }
   }
 
-  const projects = rows(await run(["project", "--recPerPage=200"])).filter((p) => p.status === "doing");
+  const projects = rows(await run(["project", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "doing");
+  truncated ||= projects.length >= LIST_PAGE_SIZE;
   for (const proj of projects) {
-    const execs = rows(await run(["execution", `--project=${str(proj.id)}`, "--recPerPage=200"]));
+    const execs = rows(await run(["execution", `--project=${str(proj.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    truncated ||= execs.length >= LIST_PAGE_SIZE;
     for (const ex of execs.filter((e) => e.status === "wait" || e.status === "doing")) {
-      const tasks = rows(await run(["task", `--executionID=${str(ex.id)}`, "--recPerPage=200"]));
+      const tasks = rows(await run(["task", `--executionID=${str(ex.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+      truncated ||= tasks.length >= LIST_PAGE_SIZE;
       for (const t of tasks) {
         if (TASK_OPEN.has(str(t.status)) && accountOf(t.assignedTo) === account) {
           items.push({ kind: "task", id: str(t.id), title: str(t.name), pri: str(t.pri), status: str(t.status), scope: str(ex.name) });
@@ -100,15 +116,17 @@ export async function myOverview(run: RunFn, account: string, context?: ZentaoCo
     }
   }
 
-  return sortByPri(items);
+  return { items: sortByPri(items), truncated };
 }
 
 /** 项目健康度：进行中项目的 Bug 状态统计。 */
-export async function projectOverview(run: RunFn): Promise<ProjectStat[]> {
-  const projects = rows(await run(["project", "--recPerPage=200"])).filter((p) => p.status === "doing");
+export async function projectOverview(run: RunFn): Promise<OverviewData> {
+  const projects = rows(await run(["project", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "doing");
+  let truncated = projects.length >= LIST_PAGE_SIZE;
   const stats: ProjectStat[] = [];
   for (const proj of projects) {
-    const bugs = rows(await run(["bug", `--project=${str(proj.id)}`, "--recPerPage=200"]));
+    const bugs = rows(await run(["bug", `--project=${str(proj.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    truncated ||= bugs.length >= LIST_PAGE_SIZE;
     stats.push({
       id: str(proj.id),
       name: str(proj.name),
@@ -117,19 +135,19 @@ export async function projectOverview(run: RunFn): Promise<ProjectStat[]> {
       bugClosed: bugs.filter((b) => b.status === "closed").length,
     });
   }
-  return stats;
+  return { items: stats, truncated };
 }
 
 /** 会话内 TTL 缓存。 */
 export class OverviewCache {
-  private store = new Map<string, { at: number; data: MyItem[] | ProjectStat[] }>();
+  private store = new Map<string, { at: number; data: OverviewData }>();
   constructor(private readonly ttlMs: number) {}
-  get(key: string): MyItem[] | ProjectStat[] | undefined {
+  get(key: string): OverviewData | undefined {
     const hit = this.store.get(key);
     if (hit === undefined || Date.now() - hit.at > this.ttlMs) return undefined;
     return hit.data;
   }
-  set(key: string, data: MyItem[] | ProjectStat[]): void {
+  set(key: string, data: OverviewData): void {
     this.store.set(key, { at: Date.now(), data });
   }
   clear(): void {
@@ -138,13 +156,14 @@ export class OverviewCache {
 }
 
 /** 聚合入口：me 视图内部取当前账号（未登录抛引导错误）。
- *  me 视图按项目上下文收窄（有配置时只查配置的 product/execution）。 */
+ *  me 视图按项目上下文收窄（有配置时只查配置的 product/execution）。
+ *  truncated=true 表示某个来源列表达到页大小上限，结果可能不完整。 */
 export async function getOverview(
   view: "me" | "project",
   run: RunFn,
   cache: OverviewCache,
   context?: ZentaoContext,
-): Promise<MyItem[] | ProjectStat[]> {
+): Promise<OverviewData> {
   const cacheKey = view === "me"
     ? `me:${context?.product ?? ""}:${context?.project ?? ""}:${context?.execution ?? ""}`
     : view;
