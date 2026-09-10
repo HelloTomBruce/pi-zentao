@@ -10,7 +10,7 @@ pi（[@earendil-works/pi-coding-agent](https://github.com/earendil-works/pi-mono
 
 | 工具 | 说明 |
 |------|------|
-| `zentao` | 通用薄代理：`module`（18 个模块）× `action`（list/get/create/update/delete/状态流转），支持范围参数与字段透传 |
+| `zentao` | 通用薄代理：`module`（19 个模块）× `action`（list/get/create/update/delete/状态流转），支持范围参数与字段透传 |
 | `zentao_my_overview` | 一键聚合：`view=me` 我的待办（激活 Bug + 未完成任务，按优先级排序）；`view=project` 进行中项目的 Bug 统计 |
 
 **斜杠命令（3 个）**
@@ -71,7 +71,6 @@ pi install npm:pi-zentao
 ```
 /zentao product                              # 产品列表表格卡片
 /zentao bug --product=26                     # 产品 26 的 Bug
-/zentao overview me                          # 我的待办面板
 /zentao-overview project                     # 切换到项目健康度
 /zentao-overview project                     # 同视图 → 关闭面板
 /zentao-login                                # 检查/执行登录
