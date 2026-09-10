@@ -1,0 +1,72 @@
+// tests/schema.test.ts
+import { describe, expect, it } from "vitest";
+import { buildCliArgs, MODULES } from "../src/lib/schema.ts";
+
+describe("buildCliArgs list", () => {
+  it("bug 列表用 --product", () => {
+    expect(buildCliArgs({ module: "bug", action: "list", product: 26 }))
+      .toEqual(["bug", "--product=26", "--recPerPage=200"]);
+  });
+
+  it("epic 列表用 --productID", () => {
+    expect(buildCliArgs({ module: "epic", action: "list", product: 3 }))
+      .toEqual(["epic", "--productID=3", "--recPerPage=200"]);
+  });
+
+  it("task 列表用 --executionID", () => {
+    expect(buildCliArgs({ module: "task", action: "list", executionID: 9 }))
+      .toEqual(["task", "--executionID=9", "--recPerPage=200"]);
+  });
+
+  it("execution 的 scope 可选，缺省列表全部", () => {
+    expect(buildCliArgs({ module: "execution", action: "list" }))
+      .toEqual(["execution", "--recPerPage=200"]);
+  });
+
+  it("无 scopeFlag 的模块直接列表", () => {
+    expect(buildCliArgs({ module: "product", action: "list" }))
+      .toEqual(["product", "--recPerPage=200"]);
+  });
+
+  it("缺 scope 抛错并提示参数名", () => {
+    expect(() => buildCliArgs({ module: "bug", action: "list" })).toThrow(/product/);
+  });
+});
+
+describe("buildCliArgs 对象操作", () => {
+  it("get 需要 id", () => {
+    expect(buildCliArgs({ module: "bug", action: "get", id: 42 })).toEqual(["bug", "42"]);
+    expect(() => buildCliArgs({ module: "bug", action: "get" })).toThrow(/id/);
+  });
+
+  it("create 透传 fields 为 --k=v", () => {
+    expect(buildCliArgs({ module: "story", action: "create", fields: { title: "t", pri: 3 } }))
+      .toEqual(["story", "create", "--title=t", "--pri=3"]);
+  });
+
+  it("delete 自动加 --yes", () => {
+    expect(buildCliArgs({ module: "bug", action: "delete", id: 1 }))
+      .toEqual(["bug", "delete", "1", "--yes"]);
+  });
+});
+
+describe("buildCliArgs 状态流转", () => {
+  it("bug resolve 缺字段报错，齐全时透传", () => {
+    expect(() => buildCliArgs({ module: "bug", action: "resolve", id: 1, fields: { resolution: "fixed" } }))
+      .toThrow(/assignedTo/);
+    expect(buildCliArgs({
+      module: "bug", action: "resolve", id: 1,
+      fields: { resolution: "fixed", assignedTo: "admin", resolvedBuild: "trunk", comment: "ok" },
+    })).toEqual(["bug", "resolve", "1", "--resolution=fixed", "--assignedTo=admin", "--resolvedBuild=trunk", "--comment=ok"]);
+  });
+
+  it("模块不支持的动作报错", () => {
+    expect(() => buildCliArgs({ module: "product", action: "resolve", id: 1 })).toThrow(/不支持/);
+  });
+
+  it("未知模块报错并列出可选", () => {
+    // @ts-expect-error 故意传非法模块
+    expect(() => buildCliArgs({ module: "nope", action: "list" })).toThrow(/未知模块/);
+    expect(MODULES).toContain("bug");
+  });
+});
