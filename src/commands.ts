@@ -163,7 +163,8 @@ export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
       overviewView = requested;
       ctx.ui.setWidget("zentao-overview", [`禅道概览（${requested === "me" ? "我的待办" : "项目健康度"}）加载中…`], { placement: "belowEditor" });
       try {
-        const overview = await getOverview(requested, run, deps.cache);
+        // 与 zentao_my_overview 工具对齐：读取项目级上下文（zentao.config.json）
+        const overview = await getOverview(requested, run, deps.cache, loadContext(ctx.cwd));
         if (overviewView !== requested) return; // 加载期间已被切换/关闭
         const lines = overviewLines(requested, overview.items);
         if (overview.truncated) lines.push(`⚠ 结果可能不完整：某个列表超过 1000 条被截断`);
