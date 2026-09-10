@@ -152,6 +152,21 @@ export interface ZentaoProfile { account: string; server: string; }
 
 export type RunFn = (args: string[]) => Promise<unknown>;
 
+/** 列表重试次数：负载均衡后有坏节点会以空/伪造单条响应，重试取条数最多者。
+ *  健康节点上重试幂等（列表只读），代价仅是多一次 CLI 调用。 */
+export const LIST_MAX_ATTEMPTS = 3;
+
+/** 列表查询包装：响应为 ≤1 条的数组（空或伪造单条）时重试，取条数最多的响应。 */
+export async function runList(run: RunFn, args: string[]): Promise<unknown> {
+  let best: unknown = await run(args);
+  for (let attempt = 1; attempt < LIST_MAX_ATTEMPTS; attempt++) {
+    if (!Array.isArray(best) || best.length > 1) break;
+    const next: unknown = await run(args);
+    if (Array.isArray(next) && (!Array.isArray(best) || next.length > best.length)) best = next;
+  }
+  return best;
+}
+
 export async function currentProfile(run: RunFn = (a) => runZentao(a)): Promise<ZentaoProfile | null> {
   try {
     const res = (await run(["profile"])) as

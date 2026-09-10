@@ -52,4 +52,12 @@ describe("executeZentao", () => {
     const res = await executeZentao({ module: "bug", action: "get", id: 1 }, run);
     expect(res.details.truncated).toBeUndefined();
   });
+
+  it("list 首次空响应时重试取到数据（坏节点）", async () => {
+    const responses: unknown[] = [[], [{ id: "7", title: "t" }]];
+    let i = 0;
+    const run: RunFn = async () => responses[i++] ?? [];
+    const res = await executeZentao({ module: "bug", action: "list", product: 1 }, run);
+    expect(res.details.count).toBe(1);
+  });
 });

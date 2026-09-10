@@ -9,7 +9,7 @@ import {
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
-import { hintOf, runZentao, type RunFn } from "../lib/cli.ts";
+import { hintOf, runList, runZentao, type RunFn } from "../lib/cli.ts";
 import { loadContext, type ZentaoContext } from "../lib/context.ts";
 import { applyContextDefaults, buildCliArgs, LIST_PAGE_SIZE, MODULES, type ZentaoArgs } from "../lib/schema.ts";
 import { columnsFor, kvText, tableText } from "../ui.ts";
@@ -43,9 +43,11 @@ export interface ZentaoToolResult {
 /** 工具执行体（与 pi 注册解耦，便于单测）。
  *  context 为项目级上下文（zentao.config.json），作为 list 范围参数默认值。 */
 export async function executeZentao(args: ZentaoArgs, run: RunFn, context: ZentaoContext = {}): Promise<ZentaoToolResult> {
+  const argv = buildCliArgs(applyContextDefaults(args, context));
   let data: unknown;
   try {
-    data = await run(buildCliArgs(applyContextDefaults(args, context)));
+    // list 走 runList：坏节点（负载均衡后约 50%）返回空/伪造单条，重试取最大
+    data = args.action === "list" ? await runList(run, argv) : await run(argv);
   } catch (err) {
     throw new Error(hintOf(err));
   }

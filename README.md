@@ -100,6 +100,7 @@ pi install npm:pi-zentao
 
 - `bug resolve` 必须同时提供 `resolution` + `assignedTo` + `resolvedBuild` + `comment` 四个字段
 - 列表统一用最大页 `--recPerPage=1000` 拉取（实测 1000 是禅道支持的最大合法页大小；500/2000 会触发服务器异常响应）。返回条数恰等于 1000 时结果标记 `truncated: true` 并在文本中提示——**服务器分页偶数页会返回伪造数据（禅道侧 bug），不做自动翻页**；超大列表请缩小范围（按状态/关键词），或按 ID 直达查询
+- 服务器为负载均衡双节点，**坏节点约 50% 概率返回空/伪造单条**（实测完美交替）。列表查询自动重试最多 3 次取条数最多的响应（`runList`）；myOverview 的任务查询带 `orderBy=id_desc` 服务端排序，最新任务在前
 
 ## 开发
 

@@ -4,7 +4,7 @@
  * 传入项目上下文时，me 视图只查配置的 product/execution。
  */
 
-import { currentProfile, type RunFn } from "./cli.ts";
+import { currentProfile, runList, type RunFn } from "./cli.ts";
 import type { ZentaoContext } from "./context.ts";
 import { LIST_PAGE_SIZE } from "./schema.ts";
 
@@ -58,7 +58,7 @@ async function myOverviewScoped(run: RunFn, account: string, context: ZentaoCont
   let truncated = false;
   if (context.product !== undefined) {
     const scope = await scopeName(run, ["product", String(context.product)], `#${context.product}`);
-    const bugs = rows(await run(["bug", `--product=${context.product}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    const bugs = rows(await runList(run, ["bug", `--product=${context.product}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
     truncated ||= bugs.length >= LIST_PAGE_SIZE;
     for (const b of bugs) {
       if (b.status === "active" && accountOf(b.assignedTo) === account) {
@@ -68,7 +68,12 @@ async function myOverviewScoped(run: RunFn, account: string, context: ZentaoCont
   }
   if (context.execution !== undefined) {
     const scope = await scopeName(run, ["execution", String(context.execution)], `#${context.execution}`);
-    const tasks = rows(await run(["task", `--executionID=${context.execution}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    // orderBy=id_desc：服务端按 id 降序，最新任务在前（截断只影响最老数据）；
+    // runList 重试化解坏节点（负载均衡后偶发空/伪造单条响应）
+    const tasks = rows(await runList(run, [
+      "task", `--executionID=${context.execution}`, `--recPerPage=${LIST_PAGE_SIZE}`,
+      "--params", `{"execution":"${context.execution}","orderBy":"id_desc"}`,
+    ]));
     truncated ||= tasks.length >= LIST_PAGE_SIZE;
     for (const t of tasks) {
       if (TASK_OPEN.has(str(t.status)) && accountOf(t.assignedTo) === account) {
@@ -88,10 +93,10 @@ export async function myOverview(run: RunFn, account: string, context?: ZentaoCo
   const items: MyItem[] = [];
   let truncated = false;
 
-  const products = rows(await run(["product", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "normal");
+  const products = rows(await runList(run, ["product", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "normal");
   truncated ||= products.length >= LIST_PAGE_SIZE;
   for (const p of products) {
-    const bugs = rows(await run(["bug", `--product=${str(p.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    const bugs = rows(await runList(run, ["bug", `--product=${str(p.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
     truncated ||= bugs.length >= LIST_PAGE_SIZE;
     for (const b of bugs) {
       if (b.status === "active" && accountOf(b.assignedTo) === account) {
@@ -100,13 +105,13 @@ export async function myOverview(run: RunFn, account: string, context?: ZentaoCo
     }
   }
 
-  const projects = rows(await run(["project", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "doing");
+  const projects = rows(await runList(run, ["project", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "doing");
   truncated ||= projects.length >= LIST_PAGE_SIZE;
   for (const proj of projects) {
-    const execs = rows(await run(["execution", `--project=${str(proj.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    const execs = rows(await runList(run, ["execution", `--project=${str(proj.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
     truncated ||= execs.length >= LIST_PAGE_SIZE;
     for (const ex of execs.filter((e) => e.status === "wait" || e.status === "doing")) {
-      const tasks = rows(await run(["task", `--executionID=${str(ex.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+      const tasks = rows(await runList(run, ["task", `--executionID=${str(ex.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
       truncated ||= tasks.length >= LIST_PAGE_SIZE;
       for (const t of tasks) {
         if (TASK_OPEN.has(str(t.status)) && accountOf(t.assignedTo) === account) {
@@ -121,11 +126,11 @@ export async function myOverview(run: RunFn, account: string, context?: ZentaoCo
 
 /** 项目健康度：进行中项目的 Bug 状态统计。 */
 export async function projectOverview(run: RunFn): Promise<OverviewData> {
-  const projects = rows(await run(["project", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "doing");
+  const projects = rows(await runList(run, ["project", `--recPerPage=${LIST_PAGE_SIZE}`])).filter((p) => p.status === "doing");
   let truncated = projects.length >= LIST_PAGE_SIZE;
   const stats: ProjectStat[] = [];
   for (const proj of projects) {
-    const bugs = rows(await run(["bug", `--project=${str(proj.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
+    const bugs = rows(await runList(run, ["bug", `--project=${str(proj.id)}`, `--recPerPage=${LIST_PAGE_SIZE}`]));
     truncated ||= bugs.length >= LIST_PAGE_SIZE;
     stats.push({
       id: str(proj.id),

@@ -89,6 +89,20 @@ describe("myOverview scoped（项目上下文）", () => {
     expect(items).toEqual([]);
   });
 
+  it("scoped 任务查询带 orderBy=id_desc 服务端排序（最新在前）", async () => {
+    const seen: string[][] = [];
+    const run: RunFn = async (args) => {
+      seen.push(args);
+      if (args[0] === "execution") return { id: "65", name: "巨型执行" };
+      if (args[0] === "task") return [{ id: "16364", name: "能耗配置管理", status: "doing", pri: 3, assignedTo: "zhangsan" }];
+      return [];
+    };
+    const res = await myOverview(run, "zhangsan", { execution: 65 });
+    expect(res.items.map((i) => i.id)).toEqual(["16364"]);
+    const taskCall = seen.find((a) => a[0] === "task");
+    expect(taskCall?.join(" ")).toContain("id_desc");
+  });
+
   it("来源列表达到页大小上限时标记 truncated", async () => {
     const manyTasks = Array.from({ length: 1000 }, (_, i) => ({
       id: String(20000 + i), name: `t${i}`, status: "doing", pri: 3, assignedTo: "lisi",
