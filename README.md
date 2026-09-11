@@ -88,9 +88,15 @@ pi install npm:pi-zentao
 
 ```
 /zentao product                              # 产品列表表格卡片
+/zentao-products                            # 同上，语义化快捷命令
+/zentao-projects                            # 所有项目列表
+/zentao-project 167                         # 项目详情 + 下辖执行列表
 /zentao bug --product=26                     # 产品 26 的 Bug
-/zentao execution --product=26               # 产品 26 下的执行（LLM 工具同样支持 product 范围）
-/zentao-executions 26                        # 同上，一键直达（产品名 + 执行表格）
+/zentao-executions 26                        # 产品 26 下的执行（产品名 + 执行表格）
+/zentao-execution 168                        # 执行详情 + 下辖任务列表
+/zentao-task 42                              # 任务详情
+/zentao-bug 123                              # Bug 详情
+/zentao-story 45                             # 需求详情
 /zentao-overview project                     # 切换到项目健康度
 /zentao-overview project                     # 同视图 → 关闭面板
 /zentao-login                                # 检查/执行登录

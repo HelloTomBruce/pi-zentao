@@ -1,4 +1,5 @@
-/** 斜杠命令：/zentao（CLI 透传卡片）、/zentao-executions、/zentao-login、/zentao-overview（widget 面板）。 */
+/** 斜杠命令：/zentao（CLI 透传卡片）、/zentao-executions、语义化查看命令、
+ *  /zentao-login、/zentao-overview（widget 面板）。 */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -21,6 +22,65 @@ export interface CommandDeps {
   cache: OverviewCache;
 }
 
+/** 执行/项目子列表通用列。 */
+const EXEC_COLS = [
+  { key: "id", label: "ID" },
+  { key: "name", label: "名称" },
+  { key: "status", label: "状态" },
+  { key: "begin", label: "开始" },
+  { key: "end", label: "结束" },
+];
+
+/** 任务子列表列。 */
+const TASK_COLS = [
+  { key: "id", label: "ID" },
+  { key: "name", label: "名称" },
+  { key: "pri", label: "优先级" },
+  { key: "status", label: "状态" },
+  { key: "assignedTo", label: "指派给" },
+];
+
+
+/** 判断是否为合法数字 ID。 */
+export function isValidId(s: string): boolean {
+  return /^\d+$/.test(s);
+}
+
+/** 列表命令的 CLI 参数（复用 zentao-card 渲染）。 */
+export function buildListArgs(module: string, pageSize = 200): string[] {
+  return [module, `--recPerPage=${pageSize}`];
+}
+
+/** 单对象详情命令的 CLI 参数。 */
+export function buildGetArgs(module: string, id: string): string[] {
+  return [module, id];
+}
+
+/** 项目详情 + 下辖执行的并行查询参数。
+ *  注意：project 模块 CLI 不支持 project <id> get 单对象查询，
+ *  改用 project --search=<id> 并配合客户端精确匹配。 */
+export function buildProjectDetailArgs(id: string): { detail: string[]; children: string[] } {
+  return {
+    detail: ["project", "--search", id, "--recPerPage=200"],
+    children: ["execution", `--project=${id}`, "--recPerPage=200"],
+  };
+}
+
+/** 执行详情 + 下辖任务的并行查询参数。 */
+export function buildExecutionDetailArgs(id: string): { detail: string[]; children: string[] } {
+  return {
+    detail: ["execution", id],
+    children: ["task", `--executionID=${id}`, "--recPerPage=200"],
+  };
+}
+
+/** zentao-executions（产品→执行）的并行查询参数。 */
+export function buildProductExecutionsArgs(id: string): { product: string[]; executions: string[] } {
+  return {
+    product: ["product", id],
+    executions: ["execution", `--product=${id}`, "--recPerPage=200"],
+  };
+}
 export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
   const run = deps.run;
 
@@ -36,7 +96,8 @@ export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
     } else {
       body = data === undefined || data === null ? "(无数据)" : String(data);
     }
-    return new Text(`${header}\n${body}`, 0, 0);
+    return new Text(`${header}
+${body}`, 0, 0);
   });
 
   pi.registerCommand("zentao", {
@@ -63,35 +124,169 @@ export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
       executions: Record<string, unknown>[];
     };
     const header = theme.fg("accent", `zentao executions --product=${cellText(product.id)}  ${cellText(product.name)}`);
-    const cols = [
-      { key: "id", label: "ID" },
-      { key: "name", label: "名称" },
-      { key: "status", label: "状态" },
-      { key: "begin", label: "开始" },
-      { key: "end", label: "结束" },
-    ];
     const body = executions.length === 0
       ? "（该产品下没有执行）"
-      : tableText(executions, cols, expanded ? 200 : 10);
-    return new Text(`${header}\n${body}`, 0, 0);
+      : tableText(executions, EXEC_COLS, expanded ? 200 : 10);
+    return new Text(`${header}
+${body}`, 0, 0);
   });
 
   pi.registerCommand("zentao-executions", {
     description: "查看产品下的所有执行：/zentao-executions <产品ID>",
     handler: async (args, ctx) => {
       const id = args.trim();
-      if (!/^\d+$/.test(id)) {
+      if (!isValidId(id)) {
         ctx.ui.notify("用法：/zentao-executions <产品ID>，如 /zentao-executions 26", "warning");
         return;
       }
       try {
+        const { product: productArgs, executions: execArgs } = buildProductExecutionsArgs(id);
         const [product, executions] = await Promise.all([
-          run(["product", id]),
-          run(["execution", `--product=${id}`, "--recPerPage=200"]),
+          run(productArgs),
+          run(execArgs),
         ]);
         pi.appendEntry("zentao-executions", {
           product: product as Record<string, unknown>,
           executions: Array.isArray(executions) ? (executions as Record<string, unknown>[]) : [],
+        });
+      } catch (err) {
+        ctx.ui.notify(hintOf(err), "error");
+      }
+    },
+  });
+
+  // ─── 语义化查看命令 ─────────────────────────────────────
+
+  // 列表命令（复用 zentao-card 渲染）
+  const registerListCommand = (name: string, description: string, module: string, pageSize = 200) => {
+    pi.registerCommand(name, {
+      description,
+      handler: async (_args, ctx) => {
+        try {
+          const data = await run(buildListArgs(module, pageSize));
+          pi.appendEntry("zentao-card", { argv: [module], data });
+        } catch (err) {
+          ctx.ui.notify(hintOf(err), "error");
+        }
+      },
+    });
+  };
+
+  // 单对象详情命令（复用 zentao-card 渲染）
+  const registerGetCommand = (name: string, description: string, module: string) => {
+    pi.registerCommand(name, {
+      description,
+      handler: async (args, ctx) => {
+        const id = args.trim();
+        if (!isValidId(id)) {
+          ctx.ui.notify(`用法：/${name} <${module}ID>，如 /${name} 42`, "warning");
+          return;
+        }
+        try {
+          const data = await run(buildGetArgs(module, id));
+          pi.appendEntry("zentao-card", { argv: [module, id], data });
+        } catch (err) {
+          ctx.ui.notify(hintOf(err), "error");
+        }
+      },
+    });
+  };
+
+  // "主详情 KV + 子列表" 组合渲染器
+  const registerDetailRenderer = (
+    name: string,
+    label: string,
+    childLabel: string,
+    childCols: { key: string; label: string }[],
+  ) => {
+    pi.registerEntryRenderer(name, (entry, { expanded }, theme) => {
+      const data = entry.data as {
+        detail: Record<string, unknown>;
+        children: Record<string, unknown>[];
+        productHint?: string;
+      };
+      const suffix = data.productHint ? `（${data.productHint}）` : "";
+      const header = theme.fg("accent", `zentao ${label} ${cellText(data.detail.id)}  ${cellText(data.detail.name)}${suffix}`);
+      const kv = kvText(data.detail, expanded);
+      const childBody = data.children.length === 0
+        ? `（该${label}下没有${childLabel}）`
+        : tableText(data.children, childCols, expanded ? 200 : 10);
+      return new Text(`${header}
+${kv}
+
+${childLabel}（${data.children.length} 个）：
+${childBody}`, 0, 0);
+    });
+  };
+
+  // 列表：产品 / 项目
+  registerListCommand("zentao-products", "查看所有产品列表", "product");
+  registerListCommand("zentao-projects", "查看所有项目列表", "project");
+
+  // 详情：任务 / Bug / 需求
+  registerGetCommand("zentao-task", "查看任务详情：/zentao-task <任务ID>", "task");
+  registerGetCommand("zentao-bug", "查看 Bug 详情：/zentao-bug <BugID>", "bug");
+  registerGetCommand("zentao-story", "查看需求详情：/zentao-story <需求ID>", "story");
+
+  // 项目详情 + 下辖执行
+  registerDetailRenderer("zentao-project-detail", "project", "执行", EXEC_COLS);
+  pi.registerCommand("zentao-project", {
+    description: "查看项目详情及下辖执行：/zentao-project <项目ID>",
+    handler: async (args, ctx) => {
+      const id = args.trim();
+      if (!isValidId(id)) {
+        ctx.ui.notify("用法：/zentao-project <项目ID>，如 /zentao-project 167", "warning");
+        return;
+      }
+      try {
+        const { detail: detailArgs, children: childrenArgs } = buildProjectDetailArgs(id);
+        const [projectResults, executions] = await Promise.all([
+          run(detailArgs),
+          run(childrenArgs),
+        ]);
+        // project get 不走单对象查询（CLI 不支持 project <id>），
+        // 改用列表搜索并从结果中精确匹配 ID
+        const projList = Array.isArray(projectResults) ? (projectResults as Record<string, unknown>[]) : [];
+        const project = projList.find((p) => String(p.id) === id) ?? projList[0] ?? {};
+        pi.appendEntry("zentao-project-detail", {
+          detail: project as Record<string, unknown>,
+          children: Array.isArray(executions) ? (executions as Record<string, unknown>[]) : [],
+        });
+      } catch (err) {
+        ctx.ui.notify(hintOf(err), "error");
+      }
+    },
+  });
+
+  // 执行详情 + 下辖任务
+  registerDetailRenderer("zentao-execution-detail", "execution", "任务", TASK_COLS);
+  pi.registerCommand("zentao-execution", {
+    description: "查看执行详情及下辖任务：/zentao-execution <执行ID>",
+    handler: async (args, ctx) => {
+      const id = args.trim();
+      if (!isValidId(id)) {
+        ctx.ui.notify("用法：/zentao-execution <执行ID>，如 /zentao-execution 168", "warning");
+        return;
+      }
+      try {
+        const { detail: detailArgs, children: childrenArgs } = buildExecutionDetailArgs(id);
+        const [execution, tasks] = await Promise.all([
+          run(detailArgs),
+          run(childrenArgs),
+        ]);
+        // 获取所属产品名（best-effort）
+        let productHint: string | undefined;
+        const execObj = execution as Record<string, unknown> | undefined;
+        if (execObj?.product) {
+          try {
+            const prod = await run(["product", String(execObj.product)]) as Record<string, unknown>;
+            if (prod?.name) productHint = String(prod.name);
+          } catch { /* best-effort */ }
+        }
+        pi.appendEntry("zentao-execution-detail", {
+          detail: execution as Record<string, unknown>,
+          children: Array.isArray(tasks) ? (tasks as Record<string, unknown>[]) : [],
+          productHint,
         });
       } catch (err) {
         ctx.ui.notify(hintOf(err), "error");
@@ -106,7 +301,8 @@ export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
       const cfg = loadContext(ctx.cwd);
       const desc = describeContext(cfg);
       ctx.ui.notify(
-        `配置文件：${path}\n上下文：${desc === "" ? "（未配置，list 操作需显式传范围参数）" : desc}`,
+        `配置文件：${path}
+上下文：${desc === "" ? "（未配置，list 操作需显式传范围参数）" : desc}`,
         "info",
       );
     },
@@ -163,9 +359,8 @@ export function registerCommands(pi: ExtensionAPI, deps: CommandDeps): void {
       overviewView = requested;
       ctx.ui.setWidget("zentao-overview", [`禅道概览（${requested === "me" ? "我的待办" : "项目健康度"}）加载中…`], { placement: "belowEditor" });
       try {
-        // 与 zentao_my_overview 工具对齐：读取项目级上下文（zentao.config.json）
         const overview = await getOverview(requested, run, deps.cache, loadContext(ctx.cwd));
-        if (overviewView !== requested) return; // 加载期间已被切换/关闭
+        if (overviewView !== requested) return;
         const lines = overviewLines(requested, overview.items);
         if (overview.truncated) lines.push(`⚠ 结果可能不完整：某个列表超过 1000 条被截断`);
         ctx.ui.setWidget("zentao-overview", lines, { placement: "belowEditor" });
