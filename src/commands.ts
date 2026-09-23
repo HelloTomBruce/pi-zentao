@@ -22,6 +22,43 @@ export interface CommandDeps {
   cache: OverviewCache;
 }
 
+/** 查看命令的合法透传标志（新 CLI 本地处理能力）。 */
+const VIEW_FLAG_RE = /^--(filter|sort|pick|limit)=/;
+
+/** 解析"查看类"命令参数：至多一个数字 ID + 若干 --filter/--sort/--pick/--limit 标志。
+ *  非法输入返回 null（调用方提示用法）。 */
+export function splitViewArgs(raw: string): { id: string | undefined; flags: string[] } | null {
+  let id: string | undefined;
+  const flags: string[] = [];
+  for (const a of splitArgs(raw.trim())) {
+    if (VIEW_FLAG_RE.test(a)) { flags.push(a); continue; }
+    if (id === undefined && isValidId(a)) { id = a; continue; }
+    return null;
+  }
+  return { id, flags };
+}
+
+/** issue/risk/meeting：带项目 ID 走 projectX 操作，否则全局列表。 */
+export function buildScopedModuleArgs(module: "issue" | "risk" | "meeting", id: string | undefined): string[] {
+  const op = { issue: "projectIssues", risk: "projectRisks", meeting: "projectMeetings" }[module];
+  return id === undefined
+    ? [module, "--recPerPage=200"]
+    : [module, op, `--projectID=${id}`, "--recPerPage=200"];
+}
+
+/** 我的禅道待办（要求服务器 22.5+，版本不足由 hintOf 提示）。 */
+export function buildMyTodosArgs(): string[] {
+  return ["my", "todos", "--recPerPage=200"];
+}
+
+/** 产品文档：先取文档库列表，再逐个库取文档（productDocs 必填 libID）。 */
+export function buildProductDocsArgs(id: string): { libs: string[]; docs: (libId: string) => string[] } {
+  return {
+    libs: ["doc", "productLibs", `--productID=${id}`, "--recPerPage=200"],
+    docs: (libId) => ["doc", "productDocs", `--productID=${id}`, `--libID=${libId}`, "--recPerPage=200"],
+  };
+}
+
 /** 执行/项目子列表通用列。 */
 const EXEC_COLS = [
   { key: "id", label: "ID" },
@@ -57,8 +94,8 @@ export function buildGetArgs(module: string, id: string): string[] {
 }
 
 /** 项目详情 + 下辖执行的并行查询参数。
- *  注意：project 模块 CLI 不支持 project <id> get 单对象查询，
- *  改用 project --search=<id> 并配合客户端精确匹配。 */
+ *  注意：禅道 API 无 project get-by-id（get project <id> → 2005），
+ *  只能 project --search=<id> 后客户端精确匹配——workaround 必须保留。 */
 export function buildProjectDetailArgs(id: string): { detail: string[]; children: string[] } {
   return {
     detail: ["project", "--search", id, "--recPerPage=200"],
@@ -155,15 +192,87 @@ ${body}`, 0, 0);
     },
   });
 
+  // /zentao-todos：我的禅道待办（my 模块，22.5+；版本不足友好提示）
+  pi.registerCommand("zentao-todos", {
+    description: "查看我的禅道待办（要求禅道 22.5+）：/zentao-todos",
+    handler: async (_args, ctx) => {
+      try {
+        const data = await run(buildMyTodosArgs());
+        pi.appendEntry("zentao-card", { argv: ["my", "todos"], data });
+      } catch (err) {
+        ctx.ui.notify(hintOf(err), "error");
+      }
+    },
+  });
+
+  // /zentao-docs <产品ID>：产品下所有文档库中的文档
+  pi.registerCommand("zentao-docs", {
+    description: "查看产品下所有文档：/zentao-docs <产品ID>",
+    handler: async (args, ctx) => {
+      const id = args.trim();
+      if (!isValidId(id)) {
+        ctx.ui.notify("用法：/zentao-docs <产品ID>，如 /zentao-docs 26", "warning");
+        return;
+      }
+      try {
+        const { libs, docs } = buildProductDocsArgs(id);
+        const libsData = await run(libs);
+        const libList = Array.isArray(libsData) ? (libsData as Record<string, unknown>[]) : [];
+        if (libList.length === 0) {
+          ctx.ui.notify("该产品下没有文档库", "info");
+          return;
+        }
+        const all: Record<string, unknown>[] = [];
+        for (const lib of libList) {
+          const d = await run(docs(String(lib.id)));
+          if (Array.isArray(d)) all.push(...(d as Record<string, unknown>[]));
+        }
+        pi.appendEntry("zentao-card", { argv: ["doc", "productDocs", `--productID=${id}`], data: all });
+      } catch (err) {
+        ctx.ui.notify(hintOf(err), "error");
+      }
+    },
+  });
+
+  // issue/risk/meeting 三件套：带项目 ID 走 projectX，无参走全局列表
+  const scopedDefs: { cmd: string; module: "issue" | "risk" | "meeting"; label: string }[] = [
+    { cmd: "zentao-issues", module: "issue", label: "问题" },
+    { cmd: "zentao-risks", module: "risk", label: "风险" },
+    { cmd: "zentao-meetings", module: "meeting", label: "会议" },
+  ];
+  for (const def of scopedDefs) {
+    pi.registerCommand(def.cmd, {
+      description: `查看${def.label}列表（可选按项目过滤）：/${def.cmd} [项目ID]`,
+      handler: async (args, ctx) => {
+        const parsed = splitViewArgs(args);
+        if (parsed === null || (parsed.id === undefined && parsed.flags.length > 0)) {
+          ctx.ui.notify(`用法：/${def.cmd} [项目ID]，如 /${def.cmd} 167`, "warning");
+          return;
+        }
+        try {
+          const data = await run([...buildScopedModuleArgs(def.module, parsed.id), ...parsed.flags]);
+          pi.appendEntry("zentao-card", { argv: [def.module], data });
+        } catch (err) {
+          ctx.ui.notify(hintOf(err), "error");
+        }
+      },
+    });
+  }
+
   // ─── 语义化查看命令 ─────────────────────────────────────
 
   // 列表命令（复用 zentao-card 渲染）
   const registerListCommand = (name: string, description: string, module: string, pageSize = 200) => {
     pi.registerCommand(name, {
       description,
-      handler: async (_args, ctx) => {
+      handler: async (args, ctx) => {
+        const parsed = splitViewArgs(args);
+        if (parsed === null) {
+          ctx.ui.notify(`用法：/${name} [--filter=…] [--sort=…] [--pick=…] [--limit=N]`, "warning");
+          return;
+        }
         try {
-          const data = await run(buildListArgs(module, pageSize));
+          const data = await run([...buildListArgs(module, pageSize), ...parsed.flags]);
           pi.appendEntry("zentao-card", { argv: [module], data });
         } catch (err) {
           ctx.ui.notify(hintOf(err), "error");
@@ -177,14 +286,14 @@ ${body}`, 0, 0);
     pi.registerCommand(name, {
       description,
       handler: async (args, ctx) => {
-        const id = args.trim();
-        if (!isValidId(id)) {
-          ctx.ui.notify(`用法：/${name} <${module}ID>，如 /${name} 42`, "warning");
+        const parsed = splitViewArgs(args);
+        if (parsed?.id === undefined) {
+          ctx.ui.notify(`用法：/${name} <${module}ID> [--pick=字段1,字段2]，如 /${name} 42`, "warning");
           return;
         }
         try {
-          const data = await run(buildGetArgs(module, id));
-          pi.appendEntry("zentao-card", { argv: [module, id], data });
+          const data = await run([...buildGetArgs(module, parsed.id), ...parsed.flags]);
+          pi.appendEntry("zentao-card", { argv: [module, parsed.id], data });
         } catch (err) {
           ctx.ui.notify(hintOf(err), "error");
         }

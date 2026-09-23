@@ -8,6 +8,10 @@ import {
   buildExecutionDetailArgs,
   buildProductExecutionsArgs,
   splitArgs,
+  splitViewArgs,
+  buildScopedModuleArgs,
+  buildMyTodosArgs,
+  buildProductDocsArgs,
 } from "../src/commands.ts";
 
 describe("isValidId", () => {
@@ -110,5 +114,42 @@ describe("splitArgs", () => {
 
   it("无参数的模块名", () => {
     expect(splitArgs("product")).toEqual(["product"]);
+  });
+});
+
+describe("splitViewArgs", () => {
+  it("解析可选 ID 与 --filter/--sort/--pick/--limit 标志", () => {
+    expect(splitViewArgs("167 --sort=pri:asc")).toEqual({ id: "167", flags: ["--sort=pri:asc"] });
+    expect(splitViewArgs("--filter=status=doing --limit=5")).toEqual({ id: undefined, flags: ["--filter=status=doing", "--limit=5"] });
+  });
+
+  it("非法参数返回 null", () => {
+    expect(splitViewArgs("--bogus=1")).toBeNull();
+    expect(splitViewArgs("167 168")).toBeNull();
+    expect(splitViewArgs("abc")).toBeNull();
+  });
+});
+
+describe("buildScopedModuleArgs（issue/risk/meeting）", () => {
+  it("带项目 ID → projectX 操作", () => {
+    expect(buildScopedModuleArgs("issue", "167")).toEqual(["issue", "projectIssues", "--projectID=167", "--recPerPage=200"]);
+    expect(buildScopedModuleArgs("risk", "167")).toEqual(["risk", "projectRisks", "--projectID=167", "--recPerPage=200"]);
+    expect(buildScopedModuleArgs("meeting", "167")).toEqual(["meeting", "projectMeetings", "--projectID=167", "--recPerPage=200"]);
+  });
+
+  it("无 ID → 全局列表", () => {
+    expect(buildScopedModuleArgs("issue", undefined)).toEqual(["issue", "--recPerPage=200"]);
+  });
+});
+
+describe("buildMyTodosArgs / buildProductDocsArgs", () => {
+  it("我的待办", () => {
+    expect(buildMyTodosArgs()).toEqual(["my", "todos", "--recPerPage=200"]);
+  });
+
+  it("产品文档：先列库再按库取文档", () => {
+    const { libs, docs } = buildProductDocsArgs("26");
+    expect(libs).toEqual(["doc", "productLibs", "--productID=26", "--recPerPage=200"]);
+    expect(docs("7")).toEqual(["doc", "productDocs", "--productID=26", "--libID=7", "--recPerPage=200"]);
   });
 });
