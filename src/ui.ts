@@ -95,8 +95,9 @@ export function overviewLines(view: "me" | "project", data: MyItem[] | ProjectSt
   if (view === "me") {
     const items = data as MyItem[];
     if (items.length === 0) return ["禅道 · 我的待办：🎉 没有待办事项"];
+    const kindLabel = (k: MyItem["kind"]): string => (k === "bug" ? "Bug" : k === "task" ? "任务" : "待办");
     const lines = items.slice(0, 12).map(
-      (i) => `  [${i.kind === "bug" ? "Bug" : "任务"}] #${i.id} P${i.pri || "-"} ${i.title}（${i.scope}）`,
+      (i) => `  [${kindLabel(i.kind)}] #${i.id} P${i.pri || "-"} ${i.title}（${i.scope}）`,
     );
     if (items.length > 12) lines.push(`  … 共 ${items.length} 项`);
     return ["禅道 · 我的待办", ...lines];

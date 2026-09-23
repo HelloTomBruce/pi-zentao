@@ -60,4 +60,14 @@ describe("overviewLines", () => {
     expect(lines[1]).toContain("存储平台");
     expect(lines[1]).toContain("激活 3");
   });
+  it("todo 项渲染为 [待办]，pri 显示 -，scope 显示日期", () => {
+    const lines = overviewLines("me", [
+      { kind: "todo", id: "31", title: "写周报", pri: "", status: "wait", scope: "2026-09-24" },
+    ]);
+    expect(lines[0]).toBe("禅道 · 我的待办");
+    expect(lines[1]).toContain("[待办]");
+    expect(lines[1]).toContain("#31");
+    expect(lines[1]).toContain("P-");
+    expect(lines[1]).toContain("2026-09-24");
+  });
 });
