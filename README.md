@@ -10,18 +10,25 @@ pi（[@earendil-works/pi-coding-agent](https://github.com/earendil-works/pi-mono
 
 | 工具 | 说明 |
 |------|------|
-| `zentao` | 通用薄代理：`module`（19 个模块）× `action`（list/get/create/update/delete/状态流转），支持范围参数与字段透传 |
-| `zentao_my_overview` | 一键聚合：`view=me` 我的待办（激活 Bug + 未完成任务，按优先级排序）；`view=project` 进行中项目的 Bug 统计 |
+| `zentao` | 通用薄代理：`module`（23 个模块，含 issue/risk/meeting/todo）× `action`（list/get/create/update/delete/状态流转），支持范围参数与字段透传；list/get 支持 `pick`/`filter`/`sort`/`search`/`limit` 本地裁剪，写入可用 `data` JSON 请求体（嵌套对象/长文本） |
+| `zentao_my_overview` | 一键聚合：`view=me` 我的待办（激活 Bug + 未完成任务 + 禅道待办，按优先级排序；禅道 22.5+ 走 my 模块快路径，旧版本自动回退扫描）；`view=project` 进行中项目的 Bug 统计 |
 
-**斜杠命令（3 个）**
+**斜杠命令**
 
 | 命令 | 说明 |
 |------|------|
 | `/zentao <module> [args]` | 直接执行 CLI，不经过 LLM（零 token），结果以表格卡片留在对话流（不进入 LLM 上下文） |
 | `/zentao-executions <产品ID>` | 产品下的所有执行（产品名 + ID/名称/状态/起止时间表） |
+| `/zentao-todos` | 我的禅道待办（要求禅道 22.5+，版本不足时给出提示） |
+| `/zentao-docs <产品ID>` | 产品下所有文档库中的文档 |
+| `/zentao-issues [项目ID]` | 问题列表；带项目 ID 时查该项目下的问题 |
+| `/zentao-risks [项目ID]` | 风险列表；带项目 ID 时查该项目下的风险 |
+| `/zentao-meetings [项目ID]` | 会议列表；带项目 ID 时查该项目下的会议 |
 | `/zentao-context` | 显示当前项目 `zentao.config.json` 解析出的上下文 |
 | `/zentao-login` | 检查/执行登录；未登录时本地 TUI 收集地址/账号/密码（不进入对话） |
 | `/zentao-overview [me\|project]` | 编辑器下方常驻概览面板；重复同视图关闭，不同视图切换 |
+
+查看类命令（`/zentao-products`、`/zentao-projects`、`/zentao-task`/`/zentao-bug`/`/zentao-story`）支持透传 `--filter`/`--sort`/`--pick`/`--limit` 标志，如 `/zentao-projects --sort=id:desc --limit=5`。
 
 **TUI 增强**
 
@@ -55,6 +62,12 @@ pi install npm:pi-zentao
   - 在终端执行 `zentao login`（插件与终端 CLI 共享凭证）
 
 登录凭证由 zentao CLI 管理于 `~/.config/zentao/zentao.json`，**插件不读取、不接触**该文件及 `ZENTAO_PASSWORD`/`ZENTAO_TOKEN` 环境变量。`/zentao-login` 通过环境变量把密码传给 CLI 子进程（不出现在进程参数中），密码也不进入对话或 LLM 上下文。
+
+## 版本要求
+
+- 依赖 `zentao-cli ^0.3.1`（随插件自动安装，无需全局安装）
+- 禅道服务端版本：核心模块（产品/项目/执行/需求/Bug/任务等）兼容禅道 22.0；`my` 模块（我的待办快路径、`/zentao-todos`）与 issue/risk/meeting 的 projectX/executionX 变体要求禅道 **22.5+**（biz13.5 / max8.5 / ipd5.5）
+- 版本不足时 CLI 会在发请求前报错（错误码 2010，附带最低版本要求）；`zentao_my_overview` 的 me 视图检测到版本不足会**自动回退**到旧版扫描路径，无需人工处理
 
 ## 项目级上下文（zentao.config.json）
 
@@ -97,6 +110,12 @@ pi install npm:pi-zentao
 /zentao-task 42                              # 任务详情
 /zentao-bug 123                              # Bug 详情
 /zentao-story 45                             # 需求详情
+/zentao-todos                                # 我的禅道待办（22.5+）
+/zentao-docs 26                              # 产品 26 下所有文档
+/zentao-issues 167                           # 项目 167 下的问题（不带 ID 则全局）
+/zentao-risks 167                            # 项目 167 下的风险
+/zentao-meetings 167                         # 项目 167 下的会议
+/zentao-projects --sort=id:desc --limit=5    # 查看命令支持 --filter/--sort/--pick/--limit
 /zentao-overview project                     # 切换到项目健康度
 /zentao-overview project                     # 同视图 → 关闭面板
 /zentao-login                                # 检查/执行登录
@@ -106,7 +125,7 @@ pi install npm:pi-zentao
 
 - `bug resolve` 必须同时提供 `resolution` + `assignedTo` + `resolvedBuild` + `comment` 四个字段
 - 列表统一用最大页 `--recPerPage=1000` 拉取（实测 1000 是禅道支持的最大合法页大小；500/2000 会触发服务器异常响应）。返回条数恰等于 1000 时结果标记 `truncated: true` 并在文本中提示——**服务器分页偶数页会返回伪造数据（禅道侧 bug），不做自动翻页**；超大列表请缩小范围（按状态/关键词），或按 ID 直达查询
-- 服务器为负载均衡双节点，**坏节点约 50% 概率返回空/伪造单条**（实测完美交替）。列表查询自动重试最多 3 次取条数最多的响应（`runList`）；myOverview 的任务查询带 `orderBy=id_desc` 服务端排序，最新任务在前
+- 服务器为负载均衡双节点，**坏节点约 50% 概率返回空/伪造单条**（实测完美交替）。列表查询自动重试最多 3 次取条数最多的响应（`runList`）；myOverview 的任务查询用原生 `--sort=id:desc` 排序，最新任务在前
 
 ## 开发
 

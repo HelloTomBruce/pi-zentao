@@ -1,6 +1,6 @@
 {
   "name": "pi-zentao",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "pi \u63d2\u4ef6\uff1a\u7985\u9053\uff08ZenTao\uff09\u67e5\u8be2/\u64cd\u4f5c\u5de5\u5177 + \u659c\u6760\u547d\u4ee4 + TUI \u6982\u89c8\u9762\u677f\u3002\u51ed\u8bc1\u7531 zentao CLI \u7ba1\u7406\uff0c\u63d2\u4ef6\u4e0d\u63a5\u89e6\u51ed\u8bc1\u3002",
   "type": "module",
   "license": "MIT",
@@ -26,7 +26,7 @@
   ],
   "dependencies": {
     "typebox": "^1.0.0",
-    "zentao-cli": "^0.2.0"
+    "zentao-cli": "^0.3.1"
   },
   "devDependencies": {
     "@earendil-works/pi-ai": "^0.85.1",
