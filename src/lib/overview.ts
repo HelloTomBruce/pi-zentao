@@ -4,11 +4,11 @@
  * 传入项目上下文时，me 视图只查配置的 product/execution。
  */
 
-import { currentProfile, runList, type RunFn } from "./cli.ts";
+import { currentProfile, isVersionUnsupported, runList, type RunFn } from "./cli.ts";
 import type { ZentaoContext } from "./context.ts";
 import { LIST_PAGE_SIZE } from "./schema.ts";
 
-export interface MyItem { kind: "bug" | "task"; id: string; title: string; pri: string; status: string; scope: string; }
+export interface MyItem { kind: "bug" | "task" | "todo"; id: string; title: string; pri: string; status: string; scope: string; }
 export interface ProjectStat { id: string; name: string; bugActive: number; bugResolved: number; bugClosed: number; }
 
 /** 聚合结果：items + truncated（任一来源列表达到页大小上限，结果可能不完整）。 */
@@ -35,6 +35,42 @@ const str = (v: unknown): string => (v === undefined || v === null ? "" : String
 
 /** 未完成任务状态。 */
 const TASK_OPEN = new Set(["wait", "doing", "pause"]);
+
+/** 禅道待办开放状态：done 视为已完成，其余（wait/doing 等）均为待办。 */
+const TODO_OPEN = (s: string): boolean => s !== "done";
+
+/** my 快路径：zentao my bugs/tasks/todos 各一次调用（要求服务器 22.5+）。
+ *  bugs/tasks 报 2010 → 返回 null（调用方回退扫描）；todos 报 2010 → 跳过待办。 */
+async function myOverviewFast(run: RunFn): Promise<OverviewData | null> {
+  let bugs: Row[];
+  let tasks: Row[];
+  try {
+    bugs = rows(await runList(run, ["my", "bugs", `--recPerPage=${LIST_PAGE_SIZE}`]));
+    tasks = rows(await runList(run, ["my", "tasks", `--recPerPage=${LIST_PAGE_SIZE}`]));
+  } catch (err) {
+    if (isVersionUnsupported(err)) return null;
+    throw err;
+  }
+  let todos: Row[] = [];
+  try {
+    todos = rows(await run(["my", "todos", `--recPerPage=${LIST_PAGE_SIZE}`]));
+  } catch (err) {
+    if (!isVersionUnsupported(err)) throw err;
+  }
+  const items: MyItem[] = [
+    ...bugs.filter((b) => b.status === "active").map((b) => ({
+      kind: "bug" as const, id: str(b.id), title: str(b.title), pri: str(b.pri), status: str(b.status), scope: `#${str(b.product)}`,
+    })),
+    ...tasks.filter((t) => TASK_OPEN.has(str(t.status))).map((t) => ({
+      kind: "task" as const, id: str(t.id), title: str(t.name), pri: str(t.pri), status: str(t.status), scope: `#${str(t.execution)}`,
+    })),
+    ...todos.filter((t) => TODO_OPEN(str(t.status))).map((t) => ({
+      kind: "todo" as const, id: str(t.id), title: str(t.name), pri: "", status: str(t.status), scope: str(t.date),
+    })),
+  ];
+  const truncated = [bugs, tasks, todos].some((l) => l.length >= LIST_PAGE_SIZE);
+  return { items: sortByPri(items), truncated };
+}
 
 function sortByPri(items: MyItem[]): MyItem[] {
   const priKey = (i: MyItem): number => (i.pri === "" ? 99 : Number(i.pri) || 99);
@@ -68,11 +104,9 @@ async function myOverviewScoped(run: RunFn, account: string, context: ZentaoCont
   }
   if (context.execution !== undefined) {
     const scope = await scopeName(run, ["execution", String(context.execution)], `#${context.execution}`);
-    // orderBy=id_desc：服务端按 id 降序，最新任务在前（截断只影响最老数据）；
-    // runList 重试化解坏节点（负载均衡后偶发空/伪造单条响应）
+    // --sort=id:desc：最新任务在前（截断只影响最老数据）；原生替代旧 --params orderBy hack
     const tasks = rows(await runList(run, [
-      "task", `--executionID=${context.execution}`, `--recPerPage=${LIST_PAGE_SIZE}`,
-      "--params", `{"execution":"${context.execution}","orderBy":"id_desc"}`,
+      "task", `--executionID=${context.execution}`, `--recPerPage=${LIST_PAGE_SIZE}`, "--sort=id:desc",
     ]));
     truncated ||= tasks.length >= LIST_PAGE_SIZE;
     for (const t of tasks) {
@@ -87,9 +121,15 @@ async function myOverviewScoped(run: RunFn, account: string, context: ZentaoCont
 /** 我的待办：激活 Bug + 未完成任务，按 pri 数值升序（1 最高，空排最后）。
  *  传入项目上下文时只查配置的 product/execution。 */
 export async function myOverview(run: RunFn, account: string, context?: ZentaoContext): Promise<OverviewData> {
+  // 有项目上下文时只查配置的 product/execution（各一次 bug/task 列表调用），
+  // 不扫全量、也不走 my 快路径（快路径不含上下文过滤，会丢失 scoped 过滤）。
   if (context !== undefined && (context.product !== undefined || context.execution !== undefined)) {
     return myOverviewScoped(run, account, context);
   }
+  // 无项目上下文：优先 my 快路径（22.5+）一次调用取回 bug/task/todo；
+  // my 不可用（2010）时回退下方全量扫描（22.0 及以下服务器）。
+  const fast = await myOverviewFast(run);
+  if (fast !== null) return fast;
   const items: MyItem[] = [];
   let truncated = false;
 

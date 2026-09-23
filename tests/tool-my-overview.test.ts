@@ -4,8 +4,16 @@ import { executeMyOverview } from "../src/tools/my-overview.ts";
 import { OverviewCache } from "../src/lib/overview.ts";
 import type { RunFn } from "../src/lib/cli.ts";
 
+/** 服务器 22.0：my 模块不可用（2010），myOverview 回退扫描路径。 */
+function versionError(): Error & { code: string } {
+  const e = new Error("zentao: 2010") as Error & { code: string };
+  e.code = "2010";
+  return e;
+}
+
 const RUN: RunFn = async (args) => {
   const key = args.join(" ");
+  if (key.startsWith("my")) throw versionError();
   if (key.startsWith("profile")) return { profiles: [{ account: "zhangsan", server: "http://s", current: true }] };
   if (key.startsWith("product")) return [{ id: "1", name: "平台", status: "normal" }];
   if (key.startsWith("bug --product=1")) return [{ id: "11", title: "我的Bug", status: "active", pri: 1, assignedTo: "zhangsan" }];
@@ -19,6 +27,7 @@ const LONG_TITLE = "x".repeat(1000);
 
 const RUN_BIG: RunFn = async (args) => {
   const key = args.join(" ");
+  if (key.startsWith("my")) throw versionError();
   if (key.startsWith("profile")) return { profiles: [{ account: "zhangsan", server: "http://s", current: true }] };
   if (key.startsWith("product")) return [{ id: "1", name: "平台", status: "normal" }];
   if (key.startsWith("bug --product=1")) {
