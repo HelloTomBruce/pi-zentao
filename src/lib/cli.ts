@@ -95,6 +95,12 @@ export function asCliError(error: unknown): CliError {
   return cliErrorOf("E5001", error instanceof Error ? error.message : String(error));
 }
 
+/** 版本/操作不支持错误（CLI 调用前版本检查）：code 无 E 前缀（2010），兼容带前缀形态（E2010）。 */
+export function isVersionUnsupported(error: unknown): boolean {
+  const code = asCliError(error).code;
+  return code === "2010" || code === "E2010";
+}
+
 function handleExec(error: Error | null, stdout: string, resolve: (v: unknown) => void, reject: (e: unknown) => void): void {
   if (error !== null) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
@@ -197,6 +203,9 @@ export async function login(
 /** 面向用户的错误消息：登录类错误附带引导。 */
 export function hintOf(err: unknown): string {
   const e = asCliError(err);
+  if (e.code === "2010" || e.code === "E2010") {
+    return `${e.message}（可升级禅道版本，或改用其他操作/模块）`;
+  }
   if (e.code === "E1001" || e.code === "E1004" || e.code === "E1006") {
     return `${e.message}（请执行 /zentao-login 登录禅道）`;
   }

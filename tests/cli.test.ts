@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { currentProfile, runList, runZentao, type ExecFn, type RunFn } from "../src/lib/cli.ts";
+import { currentProfile, hintOf, isVersionUnsupported, runList, runZentao, type ExecFn, type RunFn } from "../src/lib/cli.ts";
 
 /** 构造返回固定 stdout（或错误）的 mock exec。 */
 function mockExec(stdout: string, error: Error | null = null): ExecFn {
@@ -94,5 +94,32 @@ describe("runList（坏节点重试取最大）", () => {
     const res = await runList(run, ["product", "1"]);
     expect(res).toEqual({ id: "1" });
     expect(i).toBe(1);
+  });
+});
+
+describe("isVersionUnsupported", () => {
+  const errOf = (code: string): Error & { code: string } => {
+    const e = new Error(`zentao: 版本不足`) as Error & { code: string };
+    e.code = code;
+    return e;
+  };
+
+  it("识别 2010 与 E2010（无/带 E 前缀两种形态）", () => {
+    expect(isVersionUnsupported(errOf("2010"))).toBe(true);
+    expect(isVersionUnsupported(errOf("E2010"))).toBe(true);
+  });
+
+  it("其他错误码不误判", () => {
+    expect(isVersionUnsupported(errOf("E1001"))).toBe(false);
+    expect(isVersionUnsupported(errOf("2005"))).toBe(false);
+  });
+});
+
+describe("hintOf 版本不足提示", () => {
+  it("2010 附带升级/换操作引导", () => {
+    const e = new Error("操作 my/todos 不支持当前禅道版本 22.0") as Error & { code: string };
+    e.code = "2010";
+    expect(hintOf(e)).toMatch(/版本过低|升级禅道/);
+    expect(hintOf(e)).toContain("my/todos 不支持当前禅道版本 22.0");
   });
 });
