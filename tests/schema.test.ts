@@ -108,3 +108,74 @@ describe("buildCliArgs 状态流转", () => {
     expect(MODULES).toContain("bug");
   });
 });
+
+describe("buildCliArgs scopedList 模块（issue/risk/meeting）", () => {
+  it("issue 列表带 project → projectIssues --projectID", () => {
+    expect(buildCliArgs({ module: "issue", action: "list", project: 167 }))
+      .toEqual(["issue", "projectIssues", "--projectID=167", "--recPerPage=1000"]);
+  });
+
+  it("risk 列表带 executionID → executionRisks --executionID", () => {
+    expect(buildCliArgs({ module: "risk", action: "list", executionID: 168 }))
+      .toEqual(["risk", "executionRisks", "--executionID=168", "--recPerPage=1000"]);
+  });
+
+  it("meeting 列表无 scope → 全局列表", () => {
+    expect(buildCliArgs({ module: "meeting", action: "list" }))
+      .toEqual(["meeting", "--recPerPage=1000"]);
+  });
+
+  it("issue 不支持 delete 动作", () => {
+    expect(() => buildCliArgs({ module: "issue", action: "delete", id: 1 })).toThrow(/不支持动作/);
+  });
+});
+
+describe("buildCliArgs todo 模块", () => {
+  it("todo 支持 create，无 list", () => {
+    expect(buildCliArgs({ module: "todo", action: "create", fields: { name: "写周报", date: "2026-09-24" } }))
+      .toEqual(["todo", "create", "--name=写周报", "--date=2026-09-24"]);
+    expect(() => buildCliArgs({ module: "todo", action: "list" })).toThrow(/不支持动作/);
+  });
+});
+
+describe("buildCliArgs 本地处理参数透传", () => {
+  it("list 附加 pick/filter/sort/search/searchFields/limit", () => {
+    expect(buildCliArgs({
+      module: "bug", action: "list", product: 26,
+      pick: "id,title,status",
+      filter: ["status=active", "pri<=2"],
+      sort: "pri:asc",
+      search: "登录",
+      searchFields: "title,steps",
+      limit: 10,
+    })).toEqual([
+      "bug", "--product=26", "--recPerPage=1000",
+      "--pick=id,title,status",
+      "--filter=status=active", "--filter=pri<=2",
+      "--sort=pri:asc",
+      "--search=登录",
+      "--search-fields=title,steps",
+      "--limit=10",
+    ]);
+  });
+
+  it("get 只附加 pick，不附加 list 专属参数", () => {
+    expect(buildCliArgs({
+      module: "bug", action: "get", id: 42,
+      pick: "id,title", filter: ["status=active"], sort: "id:desc", limit: 5,
+    })).toEqual(["bug", "42", "--pick=id,title"]);
+  });
+
+  it("create/update/状态动作附加 data（JSON 请求体）", () => {
+    expect(buildCliArgs({
+      module: "story", action: "create",
+      fields: { productID: 1, title: "标题" },
+      data: '{"reviewer":["a","b"],"spec":"<p>正文</p>"}',
+    })).toEqual(["story", "create", "--productID=1", "--title=标题", "--data={\"reviewer\":[\"a\",\"b\"],\"spec\":\"<p>正文</p>\"}"]);
+  });
+
+  it("scopedList 模块的 list 也附加处理参数", () => {
+    expect(buildCliArgs({ module: "issue", action: "list", project: 167, pick: "id,title", limit: 5 }))
+      .toEqual(["issue", "projectIssues", "--projectID=167", "--recPerPage=1000", "--pick=id,title", "--limit=5"]);
+  });
+});
