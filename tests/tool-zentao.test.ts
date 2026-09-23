@@ -61,3 +61,37 @@ describe("executeZentao", () => {
     expect(res.details.count).toBe(1);
   });
 });
+
+describe("executeZentao 本地处理参数透传", () => {
+  it("list 把 pick/filter/sort/limit 传给 run", async () => {
+    const calls: string[][] = [];
+    const run: RunFn = async (args) => { calls.push(args); return []; };
+    await executeZentao({
+      module: "bug", action: "list", product: 26,
+      pick: "id,title", filter: ["status=active"], sort: "pri:asc", limit: 5,
+    }, run);
+    const argv = calls[0] ?? [];
+    expect(argv).toContain("--pick=id,title");
+    expect(argv).toContain("--filter=status=active");
+    expect(argv).toContain("--sort=pri:asc");
+    expect(argv).toContain("--limit=5");
+  });
+
+  it("create 把 data（JSON 体）传给 run", async () => {
+    const calls: string[][] = [];
+    const run: RunFn = async (args) => { calls.push(args); return { id: "9" }; };
+    await executeZentao({
+      module: "story", action: "create",
+      fields: { productID: 1, title: "标题" },
+      data: '{"reviewer":["a","b"]}',
+    }, run);
+    expect(calls[0]).toContain('--data={"reviewer":["a","b"]}');
+  });
+
+  it("issue list 带 project → projectIssues（端到端经 buildCliArgs）", async () => {
+    const calls: string[][] = [];
+    const run: RunFn = async (args) => { calls.push(args); return []; };
+    await executeZentao({ module: "issue", action: "list", project: 167 }, run);
+    expect(calls[0]?.slice(0, 3)).toEqual(["issue", "projectIssues", "--projectID=167"]);
+  });
+});

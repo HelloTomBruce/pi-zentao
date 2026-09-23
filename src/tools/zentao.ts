@@ -29,7 +29,11 @@ Scope params: story/bug/testcase -> product; epic/requirement/testtask/productpl
 Notes:
 - bug resolve requires fields: resolution + assignedTo + resolvedBuild + comment (server-enforced).
 - task start requires fields.realStarted; task finish requires currentConsumed + realStarted + finishedDate.
-- Lists return up to 200 rows — filter client-side via the status / assignedTo fields in the JSON.
+- Lists are capped at 1000 rows per query (server page limit); prefer pick/filter/sort/limit above over fetching everything.
+- list supports local processing: pick (field selection), filter (e.g. "status=active,pri<=2"; multiple filters = OR), sort ("pri:asc"), search + searchFields, limit. Prefer them over fetching everything — results shrink a lot.
+- New in CLI 0.3: issue/risk/meeting lists take project (=projectX op) or executionID (=executionX op), or no scope for a global list; todo supports create/update/delete only.
+- Nested writes (arrays, long HTML text): pass data as a JSON string instead of flat fields.
+- Version note: if the server is too old for an operation, the CLI fails with code 2010 and a clear message (e.g. my/* requires ZenTao 22.5+).
 - Requires zentao CLI login done beforehand (user runs /zentao-login or zentao login; credentials are managed by the CLI).
 - If the project root has zentao.config.json ({"product":N,"project":N,"execution":N}), list scope params fall back to it — you may omit product/project/executionID when the context makes them unambiguous.`;
 
@@ -77,15 +81,25 @@ export function registerZentaoTool(pi: ExtensionAPI, run: RunFn = (a) => runZent
       "Use the zentao tool when the user asks about 禅道 data (bugs, stories, tasks, projects, executions, testcases) instead of asking them to paste lists.",
       "Use the zentao tool with action=list and the module's scope param (bug/story/testcase -> product; task -> executionID; execution -> product or project, product preferred; build -> project).",
       "Use the zentao tool bug resolve with fields containing resolution + assignedTo + resolvedBuild + comment (all four required).",
+      "Prefer pick/filter/sort/limit on list actions to keep outputs small; use data (JSON) for nested write payloads.",
     ],
     parameters: Type.Object({
+      // SAFETY: StringEnum 需要 string[]，MODULES/ACTIONS 是 readonly string[]，运行时值不变，仅类型收窄
       module: StringEnum(MODULES as unknown as string[]),
+      // SAFETY: 同上（StringEnum 需要 string[]，ACTIONS 是 readonly string[]）
       action: StringEnum(ACTIONS as unknown as string[]),
       id: Type.Optional(Type.Number({ description: "对象 ID（get/update/delete/状态动作需要）" })),
       product: Type.Optional(Type.Number({ description: "产品 ID（story/bug/testcase、productID 系模块的列表范围参数；execution 列表亦可用，优先于 project）" })),
       project: Type.Optional(Type.Number({ description: "项目 ID（execution/build 的列表范围参数；execution 列表中 product 优先）" })),
       executionID: Type.Optional(Type.Number({ description: "执行 ID（task 列表的范围参数）" })),
       fields: Type.Optional(Type.Record(Type.String(), Type.Any(), { description: "create/update/状态动作的字段键值对" })),
+      pick: Type.Optional(Type.String({ description: "逗号分隔字段，只返回这些字段（list/get），可大幅减少输出" })),
+      filter: Type.Optional(Type.Array(Type.String(), { description: '过滤表达式（如 "status=active,pri<=2"，元素内逗号=AND，多个元素=OR）；仅 list' })),
+      sort: Type.Optional(Type.String({ description: "排序，如 pri:asc,severity:asc；仅 list" })),
+      search: Type.Optional(Type.String({ description: "搜索关键词；仅 list" })),
+      searchFields: Type.Optional(Type.String({ description: "搜索字段（逗号分隔），配合 search；仅 list" })),
+      limit: Type.Optional(Type.Number({ description: "只返回前 N 条；仅 list" })),
+      data: Type.Optional(Type.String({ description: "JSON 请求体（create/update/状态流转），用于嵌套对象/数组/长文本；与 fields 冲突时以 data 为准" })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       return executeZentao(params as ZentaoArgs, run, loadContext(ctx.cwd));
